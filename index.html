@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Genesis</title>
+  <meta name="description" content="Absorb smaller motes, avoid bigger ones, and grow your star. A touch game for iPhone Safari.">
+
+  <!-- iOS home-screen / standalone support -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Genesis">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#05060f">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game" aria-label="Genesis game field"></canvas>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hidden">
+    <div class="hud-row">
+      <div class="hud-block">
+        <div class="hud-label">Score</div>
+        <div id="hud-score" class="hud-value">0</div>
+      </div>
+      <div class="hud-block center">
+        <div class="hud-label">Stage <span id="hud-stage">1</span></div>
+        <div class="progress"><div id="hud-progress"></div></div>
+      </div>
+      <button id="btn-pause" class="icon-btn" aria-label="Pause">
+        <svg viewBox="0 0 24 24" width="22" height="22"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+    </div>
+    <div id="hud-combo" class="combo"></div>
+  </div>
+
+  <!-- Title screen -->
+  <section id="screen-title" class="screen">
+    <h1 class="logo">GENESIS</h1>
+    <p class="tagline">Absorb the small. Avoid the large. Become a star.</p>
+    <ul class="howto">
+      <li><span class="dot small"></span> Blue motes are smaller than you, so absorb them</li>
+      <li><span class="dot big"></span> Red motes are bigger than you, so avoid them</li>
+      <li><span class="dot gold"></span> Gold is a nova: for a few seconds you can absorb anything</li>
+      <li>Drag anywhere on the screen to steer</li>
+    </ul>
+    <button id="btn-play" class="btn">Tap to Begin</button>
+    <p class="best">Best: <span id="title-best">0</span></p>
+    <p id="install-hint" class="hint hidden">Tip: tap Share, then <b>Add to Home Screen</b> to play full-screen.</p>
+  </section>
+
+  <!-- Pause -->
+  <section id="screen-pause" class="screen hidden">
+    <h2>Paused</h2>
+    <button id="btn-resume" class="btn">Resume</button>
+    <button id="btn-sound" class="btn ghost">Sound: On</button>
+    <button id="btn-quit" class="btn ghost">Quit</button>
+  </section>
+
+  <!-- Stage clear -->
+  <section id="screen-stage" class="screen hidden passthrough">
+    <h2 id="stage-title">Stage 1 Cleared</h2>
+    <p id="stage-sub" class="tagline"></p>
+  </section>
+
+  <!-- Game over -->
+  <section id="screen-over" class="screen hidden">
+    <h2>Consumed</h2>
+    <p class="final">Score <span id="over-score">0</span></p>
+    <p class="final small">Stage <span id="over-stage">1</span></p>
+    <p id="over-best" class="best"></p>
+    <button id="btn-retry" class="btn">Play Again</button>
+    <button id="btn-menu" class="btn ghost">Menu</button>
+  </section>
+
+  <!-- Rotate hint for landscape phones -->
+  <div id="rotate" aria-hidden="true">Rotate your phone to portrait</div>
+
+  <script src="game.js"></script>
+</body>
+</html>
