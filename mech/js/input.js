@@ -156,6 +156,7 @@ export class Input {
     tap('#t-msl', 'KeyQ');
     tap('#t-salvo', 'KeyE');
     tap('#t-reload', 'KeyR');
+    tap('#t-lock', 'KeyT');
   }
 
   // ---- per-frame snapshot ----------------------------------------------------
@@ -190,6 +191,7 @@ export class Input {
       missile: e.has('KeyQ'),
       salvo: e.has('KeyE'),
       reload: e.has('KeyR'),
+      lockon: e.has('KeyT'),
       menu: e.has('Tab') || e.has('KeyM'),
       camera: e.has('KeyV'),
       wheel: this.wheel,

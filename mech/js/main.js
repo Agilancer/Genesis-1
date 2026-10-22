@@ -221,6 +221,14 @@ function updatePlayer(dt, c) {
   const sens = 0.0022 * settings.sens;
   P.yaw -= c.lookX * sens;
   P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -0.7, 1.0);
+  // Lock-on steers the camera so the target stays in view; the mouse still adds on top
+  if (playing && hard.target) {
+    _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6, P.pos.z));
+    const ty = Math.atan2(_t.x, _t.z);
+    const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -0.7, 1.0);
+    P.yaw = dampAngle(P.yaw, ty, 3.5, dt);
+    P.pitch = damp(P.pitch, tp, 3, dt);
+  }
   if (c.wheel) cam.dist = clamp(cam.dist + c.wheel * 1.5, 9, 26);
 
   _f.set(Math.sin(P.yaw), 0, Math.cos(P.yaw));
@@ -396,6 +404,61 @@ function updatePlayer(dt, c) {
 // ---------------------------------------------------------------------------
 
 const aim = { point: new V3(), dir: new V3() };
+
+// Lock-on button: holds one target for the aimed weapons and the camera
+const hard = { target: null };
+const _ndc = new V3();
+
+function lockCandidates() {
+  const out = [];
+  for (const t of world.targets) {
+    if (!t.alive || t.pos.distanceTo(P.pos) > 460) continue;
+    _ndc.copy(t.pos).project(camera);
+    if (_ndc.z > 1) continue;
+    const r = Math.hypot(_ndc.x * camera.aspect, _ndc.y);
+    if (r < 1.25) out.push({ t, r });
+  }
+  return out.sort((a, b) => a.r - b.r);
+}
+
+function setHardLock(t) {
+  hard.target = t;
+  weapons.hardTarget = t;
+}
+
+function pressLock() {
+  const c = lockCandidates();
+  if (!c.length) {
+    if (hard.target) { setHardLock(null); hud.toast('LOCK RELEASED', 0.8); }
+    else sound.empty();
+    return;
+  }
+  // Pressing again while still pointed at the locked target releases it
+  if (hard.target && c[0].t === hard.target) { setHardLock(null); hud.toast('LOCK RELEASED', 0.8); sound.click(); return; }
+  setHardLock(c[0].t);
+  sound.lockFull();
+}
+
+function updateHardLock() {
+  const t = hard.target;
+  if (!t) return;
+  if (!t.alive) {
+    // Roll onto the next target in view, if any
+    const c = lockCandidates();
+    setHardLock(c.length ? c[0].t : null);
+    if (hard.target) sound.lock();
+  } else if (t.pos.distanceTo(P.pos) > 520) setHardLock(null);
+}
+
+function leadPoint(out) {
+  const t = hard.target;
+  const s = weapons.slots.rightHand;
+  const speed = s && s.def.speed ? s.def.speed : 0;
+  const d = t.pos.distanceTo(P.pos);
+  out.copy(t.pos);
+  if (speed > 0) out.addScaledVector(t.vel, Math.min(2, d / speed));
+  return out;
+}
 const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3();
 
 function updateCamera(dt, speed) {
@@ -453,6 +516,7 @@ function updateCamera(dt, speed) {
   const o = _t2.copy(camera.position).addScaledVector(camDir, startT);
   const hit = world.raycast(o, camDir, 700);
   aim.point.copy(hit ? hit.point : o.addScaledVector(camDir, 700));
+  if (hard.target && mode === 'play') leadPoint(aim.point);
   aim.dir.copy(camDir);
 
   sound.listener.x = camera.position.x;
@@ -476,6 +540,8 @@ function frame(now) {
   const c = input.sample();
   if (c.menu) { if (mode === 'play') openHangar(); else if (mode === 'hangar') startPlay(); }
   if (c.reload && mode === 'play') weapons.reloadAll();
+  if (c.lockon && mode === 'play') pressLock();
+  updateHardLock();
 
   const { speed, gait } = updatePlayer(dt, c);
   updateCamera(dt, speed);
@@ -519,7 +585,7 @@ function frame(now) {
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
-      weapons: weapons.status(), camera,
+      weapons: weapons.status(), camera, hard: hard.target,
     });
   }
 

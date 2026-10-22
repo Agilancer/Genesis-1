@@ -11,7 +11,7 @@ export class HUD {
       score: $('#score'), boostBar: $('#boost-bar'), boostTxt: $('#boost-txt'), gauge: $('.gauge'),
       spd: $('#spd'), alt: $('#alt'), lockct: $('#lockct'), mslct: $('#mslct'),
       weapons: $('#weapons'), toast: $('#toast'), hit: $('#hitmark'), locks: $('#locks'), zone: $('#lock-zone'),
-      hint: $('#help-hint'),
+      hint: $('#help-hint'), hard: $('#hardlock'), hardInfo: $('#hardlock span'), hardHp: $('#hardlock .hp b'), arrow: $('#lock-arrow'),
     };
     this.last = {};
     this.lockEls = new Map();
@@ -120,6 +120,35 @@ export class HUD {
     }
     for (const [l, el] of this.lockEls) {
       if (!seen.has(l)) { el.remove(); this.lockEls.delete(l); }
+    }
+
+    // Lock-on bracket, or an edge arrow when the target is off-screen
+    if (d.hard) {
+      _v.copy(d.hard.pos).project(d.camera);
+      const behind = _v.z > 1;
+      let x = _v.x, y = _v.y;
+      if (behind) { x = -x; y = -y; }
+      const off = behind || Math.abs(x) > 0.95 || Math.abs(y) > 0.95;
+      if (!off) {
+        e.hard.hidden = false;
+        e.arrow.hidden = true;
+        e.hard.style.left = `${(x * 0.5 + 0.5) * W}px`;
+        e.hard.style.top = `${(-y * 0.5 + 0.5) * H}px`;
+        const dist = Math.round(d.hard.pos.distanceTo(d.camera.position) * 2.4);
+        this.set('hardInfo', e.hardInfo, `LOCK ${dist}m`);
+        e.hardHp.style.width = `${Math.max(0, d.hard.hp / d.hard.maxHp) * 100}%`;
+      } else {
+        e.hard.hidden = true;
+        e.arrow.hidden = false;
+        const a = Math.atan2(y, x);
+        const k = 0.9 / Math.max(Math.abs(Math.cos(a)), Math.abs(Math.sin(a)));
+        e.arrow.style.left = `${(Math.cos(a) * k * 0.5 + 0.5) * W}px`;
+        e.arrow.style.top = `${(-Math.sin(a) * k * 0.5 + 0.5) * H}px`;
+        e.arrow.style.transform = `translate(-50%, -50%) rotate(${-a}rad)`;
+      }
+    } else {
+      e.hard.hidden = true;
+      e.arrow.hidden = true;
     }
 
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) e.toast.classList.remove('on'); }

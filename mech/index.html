@@ -40,6 +40,8 @@
     <div id="hitmark"></div>
   </div>
   <div id="locks"></div>
+  <div id="hardlock" hidden><i class="hp"><b></b></i><span class="mono"></span></div>
+  <div id="lock-arrow" hidden></div>
 
   <div class="hud-left">
     <div class="gauge">
@@ -56,7 +58,7 @@
 
   <div class="hud-right" id="weapons"></div>
   <div id="toast"></div>
-  <div id="help-hint" class="mono">WASD move · Mouse aim · LMB/RMB fire · F cannon · Q missile · E salvo · Space jump · Shift dash</div>
+  <div id="help-hint" class="mono">WASD move · Mouse aim · LMB/RMB fire · T lock on · F cannon · Q missile · E salvo · Space jump · Shift dash</div>
 </div>
 
 <div id="touch" hidden>
@@ -71,9 +73,10 @@
     <button id="t-salvo" class="tb alert" type="button">SALVO<small>all pods</small></button>
     <button id="t-jump" class="tb" type="button">JUMP<small>hold</small></button>
     <button id="t-dash" class="tb" type="button">DASH<small>hold</small></button>
-    <button id="t-reload" class="tb small" type="button">RLD</button>
+    <button id="t-lock" class="tb lockbtn" type="button">LOCK<small>target</small></button>
   </div>
   <button id="t-menu" class="chip-btn t-menu" type="button">Hangar</button>
+  <button id="t-reload" class="chip-btn t-reload" type="button">Reload</button>
 </div>
 
 <section id="intro" hidden>
@@ -93,13 +96,14 @@
       <div class="ctl-group">
         <h3>Fire</h3>
         <p><kbd>LMB</kbd> right-hand weapon</p>
+        <p><kbd>T</kbd> lock on / switch target</p>
         <p><kbd>RMB</kbd> left hand / raise shield</p>
         <p><kbd>F</kbd> shoulder cannons</p>
         <p><kbd>Q</kbd> single missile · <kbd>E</kbd> full salvo</p>
         <p><kbd>R</kbd> reload · <kbd>Tab</kbd> hangar</p>
       </div>
     </div>
-    <p class="touch-note">On a touchscreen: left thumb moves, drag the right side to aim, and use the buttons to fire, jump and dash.</p>
+    <p class="touch-note">On a touchscreen: left thumb moves, drag the right side to aim, and use the buttons to lock on, fire, jump and dash.</p>
     <div class="intro-actions">
       <button id="btn-launch" class="btn primary" type="button">Launch</button>
       <button id="btn-intro-hangar" class="btn" type="button">Configure loadout</button>

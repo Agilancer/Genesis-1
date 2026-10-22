@@ -338,6 +338,7 @@ export class WeaponSystem {
     this.hand = [{ aim: 0, recoil: 0, reload: false, lastUse: -9 }, { aim: 0, recoil: 0, reload: false, lastUse: -9 }];
     this.shieldUp = false;
     this.lock = new LockOn(sound);
+    this.hardTarget = null; // target held by the lock-on button
     this.missileCycle = 0;
     this.onShake = () => {};
   }
@@ -669,7 +670,8 @@ export class WeaponSystem {
     if (!pods.length) { if (this.pods().length) this.sound.empty(); return; }
     const s = pods[0];
     const locks = this.lock.locks;
-    const target = locks.length ? locks[this.missileCycle++ % locks.length].target : null;
+    const target = this.hardTarget && this.hardTarget.alive ? this.hardTarget
+      : locks.length ? locks[this.missileCycle++ % locks.length].target : null;
     const tubeIndex = s.def.missiles - s.loaded;
     s.loaded--;
     s.lastLaunch = this.time;

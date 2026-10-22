@@ -227,6 +227,8 @@ class Target {
     this.alive = true;
     this.flash = 0;
     this.pos = new V3();
+    this.vel = new V3();
+    this._prev = new V3();
     this.anchor = pos.clone();
     this.t = Math.random() * 100;
     this.orbit = rand(10, 26);
@@ -252,7 +254,10 @@ class Target {
       this.group.rotation.y = -a + (this.orbitSpeed > 0 ? 0 : Math.PI);
       this.group.children[1].rotation.z += dt * 2;
     }
+    this._prev.copy(this.pos);
     this.pos.copy(this.offset).applyQuaternion(this.group.quaternion).add(this.group.position);
+    if (dt > 0) this.vel.subVectors(this.pos, this._prev).divideScalar(dt);
+    else this.vel.set(0, 0, 0);
     if (this.flash > 0) {
       this.flash = Math.max(0, this.flash - dt * 6);
       for (const m of this.flashMats) m.emissive.setScalar(this.flash * 0.9);

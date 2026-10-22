@@ -22,6 +22,7 @@ three.js 0.170.0 loads from jsDelivr, so the first load needs a network connecti
 | --- | --- | --- |
 | Move | `W` `A` `S` `D` | Left thumb stick |
 | Aim | Mouse (click to capture), arrow keys | Drag the right side |
+| Lock on / switch target (press again to release) | `T` | LOCK |
 | Right-hand weapon | Left mouse | FIRE |
 | Left-hand weapon / raise shield | Right mouse | L |
 | Shoulder cannons (vulcan, beam cannon) | `F` or middle mouse | CNN |
@@ -29,9 +30,13 @@ three.js 0.170.0 loads from jsDelivr, so the first load needs a network connecti
 | Full missile salvo | `E` | SALVO |
 | Jump (hold to jet upward) | `Space` | JUMP |
 | Boost dash | `Shift` | DASH |
-| Reload | `R` | RLD |
+| Reload | `R` | Reload |
 | Hangar / pause | `Tab`, `M`, or `Esc` | Hangar |
 | Camera zoom | Mouse wheel | |
+
+The lock-on button holds one target. Aimed weapons lead it, the arms track it,
+the camera keeps it in view, and single missiles go to it first. When it is
+destroyed the lock moves to the next target in view.
 
 Missiles lock onto targets inside the dashed circle. A salvo spreads its missiles
 across every lock; with nothing locked they fly to the crosshair.

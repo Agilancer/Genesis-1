@@ -138,6 +138,23 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 #hitmark.kill { border-color: var(--alert); }
 
 #locks { position: absolute; inset: 0; }
+#hardlock {
+  position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px;
+  border: 2px solid var(--hud);
+  clip-path: polygon(0 0, 30% 0, 30% 3px, 70% 3px, 70% 0, 100% 0, 100% 100%, 70% 100%, 70% calc(100% - 3px), 30% calc(100% - 3px), 30% 100%, 0 100%);
+  box-shadow: 0 0 8px rgba(125, 255, 182, 0.5);
+}
+#hardlock span {
+  position: absolute; left: 0; top: 70px; white-space: nowrap;
+  font-size: 11px; color: var(--hud); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+#hardlock .hp { position: absolute; left: 0; right: 0; top: -9px; height: 3px; background: rgba(0, 0, 0, 0.5); }
+#hardlock .hp b { display: block; height: 100%; width: 100%; background: var(--hud); }
+#lock-arrow {
+  position: absolute; width: 0; height: 0;
+  border-top: 12px solid transparent; border-bottom: 12px solid transparent; border-left: 22px solid var(--hud);
+  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.7));
+}
 .lock {
   position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px;
   border: 2px solid var(--alert);
@@ -305,7 +322,7 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
   bottom: max(14px, env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-columns: repeat(3, 64px);
-  grid-template-areas: "rld msl salvo" "cnn fl jump" "dash fire fire";
+  grid-template-areas: "lock msl salvo" "cnn fl jump" "dash fire fire";
   gap: 8px;
 }
 .tb {
@@ -322,7 +339,9 @@ button:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
 .tb.big { grid-area: fire; width: 136px; border-radius: 40px; }
 .tb.alert { border-color: rgba(224, 57, 47, 0.8); }
 .tb.small { height: 44px; width: 44px; justify-self: center; align-self: center; font-size: 11px; }
-#t-reload { grid-area: rld; }
+#t-lock { grid-area: lock; }
+.tb.lockbtn { border-color: rgba(125, 255, 182, 0.7); }
+.t-reload { position: absolute; top: max(92px, calc(env(safe-area-inset-top, 0px) + 84px)); right: max(16px, env(safe-area-inset-right, 0px)); }
 #t-msl { grid-area: msl; }
 #t-salvo { grid-area: salvo; }
 #t-cannon { grid-area: cnn; }
