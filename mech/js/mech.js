@@ -597,41 +597,46 @@ export class Mech {
   buildHead() {
     const M = this.mats;
     const head = (this.head = new THREE.Group());
-    head.position.set(0, 1.3, 0.34);
+    head.position.set(0, 1.36, 0.34);
     head.scale.setScalar(1.15);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
-    place(head, P(new THREE.CylinderGeometry(0.12, 0.16, 0.24, 10), M.joint), 0, 0.0, -0.1);
-    // Long arrowhead sensor shell, sloping down to a pointed nose
-    const shell = [[-0.28, -0.36], [0.28, -0.36], [0.34, -0.06], [0.12, 0.5], [0, 0.66], [-0.12, 0.5], [-0.34, -0.06]];
-    place(head, P(warp(topPrism(shell, 0.24, 0.03), (v, n) => { v.y = (v.y + 0.12) * (1 - 0.55 * n.z) - 0.12 + 0.04 * (1 - n.z); }), M.armor,
-      { all: B.plainA }), 0, 0.24, 0);
-    // Dark face underneath
-    place(head, P(warp(topPrism([[-0.24, -0.3], [0.24, -0.3], [0.28, -0.04], [0.08, 0.46], [0, 0.56], [-0.08, 0.46], [-0.28, -0.04]], 0.16, 0.02),
-      (v, n) => { v.y += 0.05 * n.z; }), M.joint), 0, 0.08, 0);
-    // V-shaped visor slits along the two front facets
-    const fa = Math.atan2(0.56, 0.22); // facet angle from (0.34,-0.06) to (0.12,0.5)
+    place(head, P(new THREE.CylinderGeometry(0.12, 0.16, 0.3, 10), M.joint), 0, -0.02, -0.06);
+    // Helmet: a cranium that tapers to a narrower jaw, so it reads as a head
+    place(head, P(loft([
+      { y: 0.66, w: 0.36, d: 0.48, c: 0.12, z: -0.06 },
+      { y: 0.46, w: 0.56, d: 0.64, c: 0.16, z: -0.02 },
+      { y: 0.26, w: 0.52, d: 0.6, c: 0.15, z: -0.02 },
+      { y: 0.06, w: 0.36, d: 0.46, c: 0.11, z: 0.0 },
+    ]), M.armor, { all: B.plainA }));
+    // Pointed brow that overhangs the eyes and slopes down to the front
+    place(head, P(warp(topPrism([[-0.3, -0.12], [0.3, -0.12], [0.31, 0.18], [0.1, 0.36], [0, 0.42], [-0.1, 0.36], [-0.31, 0.18]], 0.1, 0.02),
+      (v, n) => { v.y -= n.z * 0.06; }), M.armor, { all: B.plainA }), 0, 0.5, 0.02);
+    // Dark face recess with two angled eyes under the brow
+    place(head, P(frontPrism([[-0.25, 0.2], [0.25, 0.2], [0.24, 0.46], [-0.24, 0.46]], 0.06, 0.01), M.joint), 0, 0, 0.3);
     for (const sd of [-1, 1]) {
-      const g = new THREE.Group();
-      g.position.set(sd * 0.236, 0.2, 0.22);
-      g.rotation.y = sd * fa;
-      head.add(g);
-      place(g, new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.07, 0.03), M.joint), 0, 0, 0.005);
-      const slit = place(g, new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.022, 0.02), M.eye), 0.02, 0.004, 0.02);
-      slit.userData.noOutline = true;
-      // Mandible blades running forward along the jaw
-      place(head, P(blade([[-0.2, 0.02], [0.42, -0.04], [0.5, -0.12], [-0.16, -0.08]], 0.05, [1, 0.4]), M.second, { all: B.plainA }),
-        sd * 0.27, 0.08, 0.02).rotation.y = -sd * 0.32;
-      // Side sensor pods and swept rear antennas
-      place(head, P(cylX(0.07, 0.12, 12), M.frame, { all: B.mechA }), sd * 0.34, 0.2, -0.18);
-      place(head, new THREE.Mesh(new THREE.CircleGeometry(0.045, 12), M.lens), sd * 0.402, 0.2, -0.18, 0, sd * Math.PI / 2, 0);
-      const ant = place(head, P(blade([[0.04, 0.0], [-0.66, 0.16], [-0.68, 0.12], [0.04, -0.04]], 0.03, [0.4, 1]), M.second,
-        { all: B.plainA }), sd * 0.2, 0.3, -0.28);
+      const eye = place(head, new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.035, 0.02), M.eye), sd * 0.12, 0.385, 0.34);
+      eye.rotation.set(0, sd * 0.3, sd * 0.24);
+      eye.userData.noOutline = true;
+    }
+    // Faceplate: a nose ridge over mouth vents and a pointed chin
+    place(head, P(frontPrism([[-0.2, 0.3], [0.2, 0.3], [0.22, 0.16], [0.1, -0.02], [0, -0.08], [-0.1, -0.02], [-0.22, 0.16]], 0.1, 0.02),
+      M.armor, { all: B.plainB }), 0, 0, 0.3);
+    place(head, P(blade([[0.0, 0.32], [0.05, 0.3], [0.04, 0.14], [0.0, 0.12]], 0.05), M.second, { all: B.plainA }), 0, 0, 0.36);
+    for (const [y, w] of [[0.1, 0.22], [0.05, 0.16]]) place(head, new THREE.Mesh(new THREE.BoxGeometry(w, 0.016, 0.02), M.joint), 0, y, 0.36);
+    for (const sd of [-1, 1]) {
+      // Cheek guards wrapping forward along the jaw
+      place(head, P(blade([[-0.22, 0.34], [0.22, 0.3], [0.32, 0.08], [0.18, -0.04], [-0.2, 0.0]], 0.05, [1, 0.6]), M.second, { all: B.plainA }),
+        sd * 0.27, 0, 0).rotation.y = -sd * 0.22;
+      // Ear sensors and swept rear antennas
+      place(head, P(cylX(0.08, 0.12, 12), M.frame, { all: B.mechA }), sd * 0.31, 0.36, -0.08);
+      place(head, new THREE.Mesh(new THREE.CircleGeometry(0.05, 12), M.lens), sd * 0.372, 0.36, -0.08, 0, sd * Math.PI / 2, 0);
+      const ant = place(head, P(blade([[0.04, 0.0], [-0.62, 0.16], [-0.64, 0.12], [0.04, -0.04]], 0.03, [0.4, 1]), M.second,
+        { all: B.plainA }), sd * 0.22, 0.46, -0.24);
       ant.rotation.y = sd * 0.22;
     }
-    place(head, new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), M.eye), 0, 0.17, 0.6).userData.noOutline = true;
     // Gold crest along the crown
-    place(head, P(blade([[0.42, 0.0], [0.08, 0.1], [-0.32, 0.12], [-0.36, 0.0]], 0.05, [1, 0.5]), M.trim), 0, 0.33, -0.04);
+    place(head, P(blade([[0.4, 0.0], [0.08, 0.1], [-0.32, 0.12], [-0.36, 0.0]], 0.05, [1, 0.5]), M.trim), 0, 0.64, -0.04);
   }
 
   buildArm(s) {

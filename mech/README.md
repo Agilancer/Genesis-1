@@ -67,7 +67,7 @@ Weapons, from the weapon sheet:
 The suit follows Armored Core's style:
 - **Silhouette:** tall, hunched frame, narrow waist, long arms with heavy forearms.
 - **Armor:** sharp, faceted plates that sweep backward.
-- **Head:** a low arrowhead sensor head with a V visor, sitting between raised collar plates.
+- **Head:** a humanoid helm set low between raised collar plates: angled visor eyes under a pointed brow, a faceplate with a nose ridge and chin, cheek guards, ear sensors, swept antennas and a gold crest.
 - **Legs:** blade knees, thin shins and talon feet with heel spurs.
 - **Back:** a booster pack with swept stabilizer fins. Missile pods and cannons mount on top of it.
 - **Paint:** dark armor over a gold-trimmed frame. The default is Lynx Navy; Unsung Black, Shrieker Steel, Glint White, Desert Ops and Crimson are in the hangar.
