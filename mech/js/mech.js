@@ -10,9 +10,38 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // Leg segment lengths (pelvis → hip joint, thigh, shin, ankle → sole).
 // Long legs with a short thigh and a long shin, for a tall, hunched stance.
 export const LEG = { hipDrop: 0.22, thigh: 1.8, shin: 2.6, foot: 0.55 };
-// Leg splay (roll outward) and yaw (knees out), plus the idle stance's front-leg pose
-const STANCE = { splay: 0.16, splayIdle: 0.14, yaw: 0.14, yawIdle: 0.14, fH: -0.66, fK: 1.22, bH: -0.16 };
+// Leg splay (roll outward) and yaw (knees out) for the airborne and dash poses
+const STANCE = { splay: 0.16, splayIdle: 0.14, yaw: 0.14, yawIdle: 0.14 };
 const _leg = new THREE.Vector3();
+
+// Walking gait. Planted feet lock to the ground in world space; a swinging foot
+// lifts, travels to a landing spot predicted from the velocity and comes down
+// heel first. Two-bone IK puts the legs wherever the feet are.
+const GAIT = {
+  swing: 0.4,       // fraction of the cycle a foot spends in the air (duty factor 0.6)
+  bodyH: 4.3,       // pelvis height over the feet when standing, knees bent
+  dip: 0.2,         // how far the body sinks after each footfall
+  homeX: 1.08,      // lateral foot spacing while walking
+  settle: 0.42,     // standing still: re-step a foot that strays this far from its spot
+  settleTime: 0.42, // duration of a settling step
+};
+const LEG_SIDE = [-1, 1];
+// Standing foot spots relative to the hips, [right, left]: staggered, left foot forward
+const IDLE_FEET = [new THREE.Vector3(-1.1, 0, -0.7), new THREE.Vector3(1.16, 0, 0.92)];
+const _q1 = new THREE.Quaternion();
+const _q2 = new THREE.Quaternion();
+const _q3 = new THREE.Quaternion();
+const _m1 = new THREE.Matrix4();
+const _m2 = new THREE.Matrix4();
+const _eu = new THREE.Euler();
+const _ga = new THREE.Vector3();
+const _gb = new THREE.Vector3();
+const _gc = new THREE.Vector3();
+const _gd = new THREE.Vector3();
+const _ge = new THREE.Vector3();
+const _gf = new THREE.Vector3();
+const _pole = new THREE.Vector3();
+const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // ---------------------------------------------------------------------------
 // Thruster
@@ -787,7 +816,7 @@ export class Mech {
 
   legPose(L, hip, knee, splay, yaw) {
     L.hip.rotation.set(hip, L.s * yaw, L.s * splay);
-    L.knee.rotation.x = knee;
+    L.knee.rotation.set(knee, 0, 0);
   }
 
   /** How far below the body origin a leg's ankle sits, through the real joint transforms. */
@@ -797,20 +826,135 @@ export class Mech {
     return -_leg.y;
   }
 
-  /** Back-knee angle that puts both feet on the ground in the idle stance. */
-  solveIdleKnee() {
-    const F = this.legs[1], K = this.legs[0];
-    const splay = STANCE.splay + STANCE.splayIdle, yaw = STANCE.yaw + STANCE.yawIdle;
-    this.pelvis.rotation.set(0, 0, 0);
-    this.legPose(F, STANCE.fH, STANCE.fK, splay, yaw);
-    const target = this.drop(F);
-    let lo = 0, hi = 2.6;
-    for (let i = 0; i < 24; i++) {
-      const mid = (lo + hi) / 2;
-      this.legPose(K, STANCE.bH, mid, splay, yaw);
-      if (this.drop(K) > target) lo = mid; else hi = mid;
+  /** Two-bone IK: aim the hip and bend the knee so the ankle reaches `target` (pelvis space). */
+  solveLegIK(L, target, pole) {
+    const T = LEG.thigh, S = LEG.shin;
+    const V = _ga.subVectors(target, L.hip.position);
+    const D = clamp(V.length(), Math.abs(T - S) + 0.05, T + S - 0.03);
+    const k = Math.acos(clamp((D * D - T * T - S * S) / (2 * T * S), -1, 1));
+    L.knee.rotation.set(k, 0, 0);
+    // Hip-to-ankle line and knee direction in the leg's own frame...
+    const al = _gb.set(0, -T - S * Math.cos(k), -S * Math.sin(k)).normalize();
+    const pl = _gc.set(0, -T, 0);
+    pl.addScaledVector(al, -pl.dot(al)).normalize();
+    // ...and where they need to point
+    const A = V.normalize();
+    const Pp = _gd.copy(pole).addScaledVector(A, -pole.dot(A)).normalize();
+    _m1.makeBasis(A, Pp, _ge.crossVectors(A, Pp));
+    _m2.makeBasis(al, pl, _gf.crossVectors(al, pl)).transpose();
+    L.hip.quaternion.setFromRotationMatrix(_m1.multiply(_m2));
+  }
+
+  /** Turn the ankle so the foot faces world `yaw`, pitched toe-down by `pitch`. Returns the local quaternion in `out`. */
+  footQuat(L, yaw, pitch, out) {
+    L.knee.updateWorldMatrix(true, false);
+    L.knee.getWorldQuaternion(_q1).invert();
+    _q2.setFromEuler(_eu.set(pitch, yaw, 0, 'YXZ'));
+    return out.multiplyQuaternions(_q1, _q2);
+  }
+
+  /**
+   * Advance the gait: choose footholds, run swings and touchdowns. Updates
+   * this.feet[i].cur (current ground point), .lift and .pitch, and the body's
+   * walk motion. Returns the index of a foot that just landed, or -1.
+   */
+  stepFeet(dt, st, plant) {
+    if (!this.feet) {
+      this.gaitPhase = 0;
+      this.walking = false;
+      this.feet = [0, 1].map(() => ({ pos: new V3(), from: new V3(), to: new V3(), cur: new V3(), swing: false, t: 0, late: 0, lift: 0, pitch: 0, init: false }));
     }
-    return (lo + hi) / 2;
+    const F = this.feet, w = this.w;
+    const vel = st.vel || _ga.set(0, 0, 0);
+    const vx = vel.x, vz = vel.z;
+    const speed = Math.hypot(vx, vz);
+    const heading = (st.bodyYaw || 0) + w.legYaw;
+    const ch = Math.cos(heading), sh = Math.sin(heading);
+    const rp = this.root.position, ground = st.ground ?? rp.y;
+    const home = (i, idle, out) => {
+      const ox = idle ? IDLE_FEET[i].x : LEG_SIDE[i] * GAIT.homeX, oz = idle ? IDLE_FEET[i].z : 0;
+      return out.set(rp.x + ox * ch + oz * sh, ground, rp.z - ox * sh + oz * ch);
+    };
+    for (let i = 0; i < 2; i++) if (!F[i].init) { home(i, true, F[i].pos); F[i].init = true; }
+
+    // Walk or stand, with hysteresis
+    if (!this.walking && speed > 0.9 && plant > 0.5) {
+      this.walking = true;
+      // Lead with a foot already in the air, else the one furthest from where it needs to be
+      let lead = 0, best = -1;
+      for (let i = 0; i < 2; i++) {
+        if (F[i].swing) { lead = i; best = Infinity; break; }
+        const e = home(i, false, _gb).set(_gb.x + vx * 0.4, ground, _gb.z + vz * 0.4).distanceTo(F[i].pos);
+        if (e > best) { best = e; lead = i; }
+      }
+      const s0 = F[lead].swing ? F[lead].t : 0;
+      this.gaitPhase = ((s0 * GAIT.swing - lead * 0.5) % 1 + 1) % 1;
+    } else if (this.walking && (speed < 0.45 || plant < 0.5)) this.walking = false;
+
+    let step = -1;
+    const cycle = 1 / (0.5 + 0.11 * speed); // seconds per full cycle (two steps)
+    if (plant < 0.5) {
+      // Airborne or dashing: the legs follow the canned pose; keep footholds under the hips for landing
+      for (let i = 0; i < 2; i++) { F[i].swing = false; F[i].late = 0; home(i, true, F[i].pos); }
+    } else if (this.walking) {
+      this.gaitPhase = (this.gaitPhase + dt / cycle) % 1;
+      for (let i = 0; i < 2; i++) {
+        const f = F[i];
+        const phi = (this.gaitPhase + i * 0.5) % 1;
+        const inSwing = phi < GAIT.swing;
+        if (inSwing && !f.swing) { f.swing = true; f.from.copy(f.pos); }
+        if (f.swing && inSwing) {
+          f.t = phi / GAIT.swing;
+          // Land ahead of the hip by half a stance's travel, so the foot passes under it mid-stance
+          const lead = cycle * GAIT.swing * (1 - f.t) + cycle * (1 - GAIT.swing) * 0.5;
+          home(i, false, f.to);
+          f.to.x += vx * lead; f.to.z += vz * lead;
+        } else if (f.swing) {
+          // Touchdown on the spot the swing was already heading for
+          f.t = 1; f.swing = false; f.pos.copy(f.to); step = i;
+        }
+        f.late = inSwing ? 0 : (phi - GAIT.swing) / (1 - GAIT.swing);
+      }
+    } else {
+      // Standing: finish a step in progress, then re-step a foot that strayed from its spot
+      for (let i = 0; i < 2; i++) {
+        const f = F[i];
+        f.late = 0;
+        if (f.swing) {
+          f.t = Math.min(1, f.t + dt / GAIT.settleTime);
+          home(i, true, f.to);
+          if (f.t >= 1) { f.swing = false; f.pos.copy(f.to); step = i; }
+        }
+      }
+      if (!F[0].swing && !F[1].swing) {
+        let worst = -1, err = GAIT.settle;
+        for (let i = 0; i < 2; i++) {
+          const e = home(i, true, _gb).distanceTo(F[i].pos);
+          if (e > err) { err = e; worst = i; }
+        }
+        if (worst >= 0) { const f = F[worst]; f.swing = true; f.t = 0; f.from.copy(f.pos); }
+      }
+    }
+
+    // Foot paths: an arcing swing with toe-off and heel strike; planted feet peel the heel before lifting
+    for (let i = 0; i < 2; i++) {
+      const f = F[i];
+      let pitch, lift = 0;
+      if (f.swing) {
+        const s = f.t, e = s * s * (3 - 2 * s);
+        f.cur.lerpVectors(f.from, f.to, e);
+        const h = this.walking ? 0.36 + 0.04 * speed : 0.3;
+        lift = h * Math.pow(Math.sin(Math.PI * s), 0.8);
+        pitch = 0.5 * Math.pow(1 - s, 3) - 0.32 * Math.sin(Math.PI * clamp((s - 0.4) / 0.62, 0, 1));
+      } else {
+        f.cur.copy(f.pos);
+        pitch = 0.45 * smoothstep(0.72, 1, f.late);
+      }
+      f.pitch += (pitch - f.pitch) * (1 - Math.exp(-dt * 30));
+      f.lift = lift;
+    }
+    this.walkSpeed = speed;
+    return step;
   }
 
   /**
@@ -836,54 +980,95 @@ export class Mech {
       w.reload[i] = damp(w.reload[i], st.reload[i] ? 1 : 0, 8, dt);
       w.recoil[i] = st.recoil[i];
     }
-    const g = w.gait, ph = st.phase, t = st.time;
+    const g = w.gait, t = st.time;
     // How much of the standing idle stance shows through
     const idle = (1 - g) * (1 - w.air) * (1 - w.dash) * (1 - w.crouch);
 
     // --- legs ---
-    // Wide, splayed stance: thighs angle out, knees point outward, and the knees
-    // stay bent so the long legs carry the body low and coiled.
-    const splay = STANCE.splay + STANCE.splayIdle * idle + 0.04 * w.air;
-    const yaw = STANCE.yaw + STANCE.yawIdle * idle;
-    if (this.idleBackKnee == null) this.idleBackKnee = this.solveIdleKnee();
-    const pose = [];
-    for (let i = 0; i < 2; i++) {
-      const p = ph + (i === 1 ? 0 : Math.PI);
-      let hip = -0.3 - Math.sin(p) * 0.55 * g;
-      let knee = 0.66 + Math.max(0, Math.cos(p)) * 0.9 * g;
-      const airHip = i === 1 ? -0.8 : -0.05, airKnee = i === 1 ? 1.3 : 0.65;
-      hip += (airHip - hip) * w.air;
-      knee += (airKnee - knee) * w.air;
-      const dHip = i === 1 ? -0.05 : 0.2, dKnee = i === 1 ? 0.9 : 1.0;
-      hip += (dHip - hip) * w.dash;
-      knee += (dKnee - knee) * w.dash;
-      hip -= 0.6 * w.crouch;
-      knee += 1.15 * w.crouch;
-      pose.push({ hip, knee });
-    }
-    // Idle: staggered stance, left foot forward, back knee solved so both feet stay planted
-    pose[1].hip += (STANCE.fH - pose[1].hip) * idle; pose[1].knee += (STANCE.fK - pose[1].knee) * idle;
-    pose[0].hip += (STANCE.bH - pose[0].hip) * idle; pose[0].knee += (this.idleBackKnee - pose[0].knee) * idle;
-    this.pelvis.rotation.y = w.legYaw - 0.22 * idle;
-    this.pelvis.rotation.z = -Math.sin(ph) * 0.035 * g;
-    let height = 0;
-    for (let i = 0; i < 2; i++) {
-      const L = this.legs[i], q = pose[i];
-      this.legPose(L, q.hip, q.knee, splay, yaw);
-      L.ankle.rotation.set(-(q.hip + q.knee) + (0.4 + (q.hip + q.knee)) * w.air * 0.6 + w.dash * 0.25, -L.s * yaw * 0.6, -L.s * splay);
-      height = Math.max(height, this.drop(L) + LEG.foot);
-      this.hipPads[i].rotation.x = Math.min(0, q.hip) * 0.45;
+    const plant = (1 - w.air) * (1 - w.dash); // 1 when the feet belong to the ground
+    const blendFK = 1 - plant;
+    const step = this.stepFeet(dt, st, plant);
+    w.walk = damp(w.walk || 0, this.walking ? clamp(this.walkSpeed / 7.5, 0.35, 1) : 0, 6, dt);
+    const W = w.walk, gp = this.gaitPhase;
+    // Body motion over the gait: sink after each footfall and rise at the passing pose,
+    // shift weight over the planted foot, twist the hips with the stride
+    const u = ((((gp - GAIT.swing) % 0.5) + 0.5) % 0.5) / 0.5; // 0 at each footfall
+    const bob = -GAIT.dip * W * (0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.15)));
+    const jolt = Math.exp(-u * 9) * W;
+    const sway = -0.14 * W * Math.cos(2 * Math.PI * (gp - 0.7));
+    const roll = 0.05 * W * Math.cos(2 * Math.PI * (gp - 0.7));
+    const hipTwist = -0.1 * W * Math.cos(2 * Math.PI * (gp - 0.9));
+    this.armPhase = 2 * Math.PI * (gp - 0.9) + Math.PI / 2;
+    const breath = Math.sin(t * 1.5);
+
+    // Canned leg pose for jumps and dashes
+    const splay = STANCE.splay + 0.04 * w.air;
+    const yaw = STANCE.yaw;
+    const fk = [];
+    let heightFK = 0;
+    if (blendFK > 0.001) {
+      for (let i = 0; i < 2; i++) {
+        const L = this.legs[i];
+        let hip = -0.3, knee = 0.66;
+        const airHip = i === 1 ? -0.8 : -0.05, airKnee = i === 1 ? 1.3 : 0.65;
+        const dHip = i === 1 ? -0.05 : 0.2, dKnee = i === 1 ? 0.9 : 1.0;
+        const a = w.air / Math.max(1e-3, w.air + w.dash);
+        hip = airHip * a + dHip * (1 - a) - 0.6 * w.crouch;
+        knee = airKnee * a + dKnee * (1 - a) + 1.15 * w.crouch;
+        this.legPose(L, hip, knee, splay, yaw);
+        heightFK = Math.max(heightFK, this.drop(L) + LEG.foot);
+        fk.push({ hip, knee, q: L.hip.quaternion.clone() });
+      }
     }
 
-    const breath = Math.sin(t * 1.5);
-    const bob = -Math.abs(Math.cos(ph)) * 0.11 * g * (1 - w.air) * (1 - w.dash) + breath * 0.015 * idle;
-    this.body.position.y = height + bob;
-    this.body.rotation.z = Math.sin(ph) * 0.03 * g * (1 - w.air) + 0.03 * idle;
+    const heightIK = GAIT.bodyH - 0.95 * w.crouch + bob + breath * 0.015 * idle;
+    const height = blendFK > 0.001 ? heightIK + (heightFK - heightIK) * blendFK : heightIK;
+    this.body.position.set(sway * plant, height, 0);
+    this.body.rotation.z = 0.03 * idle - roll * 0.3;
+    this.pelvis.rotation.set(0, w.legYaw - 0.22 * idle + hipTwist, roll);
+    this.root.updateMatrixWorld(true);
+
+    const footYaw = (st.bodyYaw || 0) + w.legYaw;
+    for (let i = 0; i < 2; i++) {
+      const L = this.legs[i], s = L.s, f = this.feet[i];
+      let kIK = 0;
+      if (plant > 0.001) {
+        // Ankle target: the foothold, raised by the swing arc and by the heel peeling up at toe-off
+        _gf.set(f.cur.x, f.cur.y + LEG.foot + f.lift + Math.max(0, Math.sin(f.pitch)) * 0.85, f.cur.z);
+        this.pelvis.worldToLocal(_gf);
+        _pole.set(s * 0.55, 0.05, 1).normalize();
+        this.solveLegIK(L, _gf, _pole);
+        kIK = L.knee.rotation.x;
+      }
+      if (blendFK > 0.001) {
+        const F = fk[i];
+        if (plant > 0.001) {
+          _q3.copy(L.hip.quaternion);
+          L.hip.quaternion.slerpQuaternions(_q3, F.q, blendFK);
+          L.knee.rotation.x = kIK + (F.knee - kIK) * blendFK;
+        } else {
+          L.hip.quaternion.copy(F.q);
+          L.knee.rotation.x = F.knee;
+        }
+      }
+      // Foot: flat and pointed slightly outward when planted, pitched through toe-off and heel strike
+      if (plant > 0.001) this.footQuat(L, footYaw + s * 0.12, f.pitch, _q3);
+      if (blendFK > 0.001) {
+        const F = fk[i];
+        _q2.setFromEuler(_eu.set(-(F.hip + F.knee) + (0.4 + (F.hip + F.knee)) * w.air * 0.6 + w.dash * 0.25, -s * yaw * 0.6, -s * splay, 'XYZ'));
+        if (plant > 0.001) L.ankle.quaternion.slerpQuaternions(_q3, _q2, blendFK);
+        else L.ankle.quaternion.copy(_q2);
+      } else L.ankle.quaternion.copy(_q3);
+      // Front skirt plate follows the thigh
+      _gb.set(0, -1, 0).applyQuaternion(L.hip.quaternion);
+      this.hipPads[i].rotation.x = Math.min(0, -Math.atan2(_gb.z, -_gb.y)) * 0.45;
+    }
 
     // --- torso ---
     // Hunched forward over the hips, more so when idle
-    this.waist.rotation.y = clamp(w.twist, -1.1, 1.1) + Math.sin(ph) * 0.08 * g + 0.16 * idle;
-    this.waist.rotation.x = 0.26 + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + breath * 0.012 + g * 0.06 + 0.14 * idle;
+    // The torso counter-twists against the hips and jolts forward on each footfall
+    this.waist.rotation.y = clamp(w.twist, -1.1, 1.1) - hipTwist * 0.7 + 0.16 * idle;
+    this.waist.rotation.x = 0.26 + w.dash * 0.3 + w.crouch * 0.25 - st.aimPitch * 0.12 + breath * 0.012 + W * 0.08 + jolt * 0.06 + 0.14 * idle;
     this.waist.rotation.z = -0.03 * idle;
     const sweep = Math.pow(Math.sin(t * 0.42), 5) * 0.5 * idle * (1 - w.aim[0]);
     this.head.rotation.y = clamp((st.aimYaw - w.twist) * 0.8, -0.6, 0.6) - 0.12 * idle + sweep;
@@ -893,7 +1078,7 @@ export class Mech {
     // --- arms ---
     for (let i = 0; i < 2; i++) {
       const A = this.arms[i], s = A.s;
-      const swing = -Math.sin(ph + (i === 0 ? 0 : Math.PI)) * 0.32 * g * (1 - w.dash);
+      const swing = -Math.sin(this.armPhase + (i === 0 ? 0 : Math.PI)) * 0.28 * W * (1 - w.dash);
       const isShield = i === 1 && st.hasShield;
       let shx = 0.05 + swing, shy = 0, shz = s * (0.2 + 0.16 * idle), elx = isShield ? -1.2 : -0.75;
       // Idle: rifle at low ready across the body; shield arm in a guard
@@ -943,15 +1128,7 @@ export class Mech {
     for (const x of T.main) x.updateRams();
     for (const pst of this.pistons) pst.update();
 
-    // --- footstep events ---
-    const c = Math.cos(ph);
-    let step = -1;
-    if (g > 0.25 && w.air < 0.3 && w.dash < 0.3) {
-      if (this.prevCos > 0 && c <= 0) step = 1;
-      else if (this.prevCos < 0 && c >= 0) step = 0;
-    }
-    this.prevCos = c;
-    return { height, step };
+    return { height, step, soft: !this.walking };
   }
 
   footWorld(i, out) {

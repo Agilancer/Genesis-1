@@ -251,7 +251,7 @@ function updatePlayer(dt, c) {
     if (P.grounded) fx.dust(P.pos, 0.8, 8);
   }
   P.dashing = playing && !!c.dash && canBoost;
-  const maxSpeed = P.dashing ? 36 : 10.5;
+  const maxSpeed = P.dashing ? 36 : 7.5;
   const accel = P.grounded ? (P.dashing ? 70 : 30) : (P.dashing ? 45 : 14);
   const target = _t.set(0, 0, 0);
   if (wishLen > 0.08) target.copy(_w).multiplyScalar(maxSpeed);
@@ -349,9 +349,7 @@ function updatePlayer(dt, c) {
     else { P.legYaw = clamp(Math.atan2(-lx, -lz), -1.0, 1.0); P.gaitDir = -1; }
   } else P.legYaw *= 0.9;
   const walking = P.grounded && !P.dashing && P.landT <= 0;
-  const gait = walking ? clamp(speed / 10, 0, 1) : 0;
-  const stride = Math.max(1.6, 3.6 * Math.max(gait, 0.45));
-  if (walking) P.phase += P.gaitDir * dt * speed * Math.PI / stride;
+  const gait = walking ? clamp(speed / 7.5, 0, 1) : 0;
 
   // Thrusters
   const T = P.thrust;
@@ -468,7 +466,7 @@ const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3(
 function updateCamera(dt, speed) {
   cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
-  if (mode === 'play') {
+  if (mode === 'play' && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
     const side = 4.4;
@@ -554,8 +552,9 @@ function frame(now) {
   shoulder.set(P.pos.x, P.pos.y + 6.2, P.pos.z);
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
-  const aimPitch = mode === 'play' ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -0.8, 1.0) : 0;
-  const aimYaw = mode === 'play' ? clamp(wrap(aimYawWorld - P.bodyYaw), -1.2, 1.2) : 0;
+  const aiming = mode === 'play' && !cam.debugOrbit;
+  const aimPitch = aiming ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -0.8, 1.0) : 0;
+  const aimYaw = aiming ? clamp(wrap(aimYawWorld - P.bodyYaw), -1.2, 1.2) : 0;
 
   // Weapons (input only while playing)
   const wc = mode === 'play' ? c : { fireR: false, fireL: false, fireS: false, missile: false, salvo: false };
@@ -566,7 +565,8 @@ function frame(now) {
   mech.root.rotation.y = P.bodyYaw;
   const H = weapons.hand;
   const res = mech.animate(dt, {
-    phase: P.phase, gait, air: P.grounded ? 0 : 1, dash: P.dashing ? 1 : 0,
+    gait, air: P.grounded ? 0 : 1, dash: P.dashing ? 1 : 0,
+    vel: P.vel, bodyYaw: P.bodyYaw, ground: P.pos.y,
     crouch: P.jumpT > 0 ? 1 : P.landT > 0 ? Math.min(1, P.landT * 3) : 0,
     legYaw: P.legYaw, aimYaw, aimPitch,
     aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload],
@@ -576,9 +576,10 @@ function frame(now) {
   if (res.step >= 0) {
     mech.footWorld(res.step, _t);
     _t.y = P.pos.y;
-    fx.dust(_t, 0.55 + gait * 0.4, 7);
-    sound.footstep(_t, 0.6 + gait * 0.5);
-    shake(null, 0.12 + gait * 0.1);
+    const k = res.soft ? 0.45 : 1;
+    fx.dust(_t, (0.6 + gait * 0.4) * k, res.soft ? 4 : 8);
+    sound.footstep(_t, (0.75 + gait * 0.4) * k);
+    shake(null, (0.16 + gait * 0.12) * k);
   }
 
   world.update(dt, P.pos);

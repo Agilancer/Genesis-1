@@ -72,6 +72,15 @@ The suit follows Armored Core's style:
 - **Back:** a booster pack with swept stabilizer fins. Missile pods and cannons mount on top of it.
 - **Paint:** dark armor over a gold-trimmed frame. The default is Lynx Navy; Unsung Black, Shrieker Steel, Glint White, Desert Ops and Crimson are in the hangar.
 
+Walking is procedural:
+
+- **Foot planting:** each foot locks to its spot on the ground while planted, so feet never slide.
+- **Stepping:** a lifted foot peels its heel, arcs forward, and lands heel-first on a spot predicted from the current velocity. Each foot spends 60% of the cycle planted.
+- **Leg solving:** two-joint IK bends the hip and knee to reach the foot, with the knees steered forward and outward.
+- **Body motion:** the body sinks after each footfall and rises at the passing pose. Weight shifts over the planted leg, the hips twist with the stride while the torso counter-twists and jolts on impact, and the arms swing against the legs.
+- **Standing still:** the feet settle into a staggered stance. Turning in place shuffles them to follow.
+- **Air and dash:** jumps and dashes use canned leg poses that blend back into the walking system on landing.
+
 The thrusters are built to read as real hardware:
 
 - **Main engines:** two bell nozzles hang from armored housings under the backpack.
@@ -97,7 +106,7 @@ in the hangar settings.
 | `js/regions.js` | Pixel rectangles of the panels used from each texture sheet |
 | `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
-| `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, procedural walk/dash/jump/aim animation |
+| `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/world.js` | Sky, ground, props, colliders, raycasts, target drones and boards |
