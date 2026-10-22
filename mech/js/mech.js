@@ -8,8 +8,8 @@ const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-ra
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 // Leg segment lengths (pelvis → hip joint, thigh, shin, ankle → sole).
-// Short thighs, tall shins and big feet, after Gundam proportions.
-export const LEG = { hipDrop: 0.2, thigh: 1.65, shin: 2.0, foot: 0.55 };
+// Short, thick legs for a squat, heavy stance.
+export const LEG = { hipDrop: 0.18, thigh: 1.15, shin: 1.45, foot: 0.5 };
 
 // ---------------------------------------------------------------------------
 // Thruster
@@ -255,7 +255,6 @@ export class Thruster {
     const k = 1 - Math.exp(-(dt || 0.016) * 6);
     this.gimbal.rotation.x += (this.gimbalTarget - this.gimbal.rotation.x) * k;
     for (const f of this.flaps) f.pivot.rotation.x += (f.open * Math.min(1, level * 3) - f.pivot.rotation.x) * Math.min(1, k * 2);
-    this.updateRams();
     this.innerMat.opacity = 0.05 + 0.95 * Math.min(1, level * 1.4);
     const on = level > 0.01;
     this.plume.visible = this.shell.visible = this.glow.visible = on;
@@ -276,7 +275,6 @@ export class Thruster {
 
   updateRams() {
     if (!this.rams.length) return;
-    this.group.updateMatrixWorld(true);
     for (const R of this.rams) {
       _a.copy(R.a.position);
       R.b.getWorldPosition(_b);
@@ -301,7 +299,50 @@ export class Thruster {
 }
 
 // ---------------------------------------------------------------------------
-// Mech model
+// Hydraulic piston between two parts that move relative to each other
+// ---------------------------------------------------------------------------
+
+let pistonGeo, pistonMats;
+class Piston {
+  constructor(parentA, posA, parentB, posB, r, mats) {
+    if (!pistonGeo) {
+      pistonGeo = new THREE.CylinderGeometry(1, 1, 1, 8);
+      pistonMats = {
+        barrel: mats.joint,
+        rod: new THREE.MeshStandardMaterial({ color: 0xd2d5da, roughness: 0.15, metalness: 1.0 }),
+      };
+    }
+    this.parent = parentA;
+    this.a = posA.clone();
+    this.b = new THREE.Object3D();
+    this.b.position.copy(posB);
+    parentB.add(this.b);
+    this.barrel = new THREE.Mesh(pistonGeo, pistonMats.barrel);
+    this.rod = new THREE.Mesh(pistonGeo, pistonMats.rod);
+    this.barrel.castShadow = this.rod.castShadow = true;
+    parentA.add(this.barrel, this.rod);
+    this.r = r;
+  }
+
+  update() {
+    this.b.getWorldPosition(_b);
+    this.parent.worldToLocal(_b);
+    const len = this.a.distanceTo(_b);
+    const dir = _b.sub(this.a).normalize();
+    const q = this.barrel.quaternion.setFromUnitVectors(_up, dir);
+    this.rod.quaternion.copy(q);
+    const bl = len * 0.55;
+    this.barrel.position.copy(this.a).addScaledVector(dir, bl / 2);
+    this.barrel.scale.set(this.r, bl, this.r);
+    this.rod.position.copy(this.a).addScaledVector(dir, len / 2);
+    this.rod.scale.set(this.r * 0.5, len, this.r * 0.5);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mech model: a squat, armored-core style suit. Angular plate armor over an
+// exposed frame, hydraulics at the knees and elbows, a visor-slit sensor head
+// and a booster pack.
 // ---------------------------------------------------------------------------
 
 export class Mech {
@@ -309,6 +350,7 @@ export class Mech {
     this.mats = mats;
     this.glowTex = glowTex;
     this.thrusters = { main: [], vern: [], calf: [], sole: [] };
+    this.pistons = [];
     this.mounts = {};
     this.w = { gait: 0, air: 0, dash: 0, crouch: 0, aim: [0, 0], shield: 0, reload: [0, 0], recoil: [0, 0], legYaw: 0, twist: 0 };
     this.prevCos = 1;
@@ -336,124 +378,103 @@ export class Mech {
 
   buildPelvis() {
     const M = this.mats, p = this.pelvis;
-    // Waist block, white, narrowing to the crotch
+    // Dark mechanical hip block with armor plates bolted on
     place(p, P(loft([
-      { y: 0.3, w: 1.08, d: 0.92, c: 0.2 },
-      { y: 0.0, w: 1.12, d: 0.96, c: 0.22 },
-      { y: -0.32, w: 0.62, d: 0.66, c: 0.16 },
-    ]), M.armor, { all: B.plainB, z: B.plainA }));
-    // Red crotch plate with a yellow tip: the RX-78 "V"
-    place(p, P(frontPrism([[-0.3, 0.2], [0.3, 0.2], [0.24, -0.2], [0.1, -0.44], [-0.1, -0.44], [-0.24, -0.2]], 0.2, 0.04),
-      M.accent, { all: B.redSmall }), 0, -0.02, 0.42);
-    place(p, P(frontPrism([[-0.12, 0], [0.12, 0], [0, -0.2]], 0.16, 0.02), M.trim), 0, -0.24, 0.5);
-    place(p, P(chamferBox(0.5, 0.09, 0.1, 0.03), M.trim), 0, 0.16, 0.53);
-    place(p, P(cylX(0.26, 1.4), M.joint), 0, -0.2, 0);
-
-    // Front skirt plates swing with the thighs
-    this.skirtF = [-1, 1].map((s) => {
+      { y: 0.3, w: 1.16, d: 0.96, c: 0.18 },
+      { y: 0.02, w: 1.2, d: 1.0, c: 0.2 },
+      { y: -0.34, w: 0.7, d: 0.72, c: 0.16 },
+    ]), M.frame, { all: B.mechA }));
+    place(p, P(frontPrism([[-0.44, 0.22], [0.44, 0.22], [0.38, -0.16], [0.16, -0.42], [-0.16, -0.42], [-0.38, -0.16]], 0.16, 0.04),
+      M.armor, { pz: B.plainB, all: B.plainA }), 0, 0, 0.5);
+    place(p, P(chamferBox(0.52, 0.08, 0.06, 0.02), M.frame, { all: B.hazard }), 0, 0.08, 0.6);
+    place(p, P(frontPrism([[-0.5, 0.2], [0.5, 0.2], [0.4, -0.3], [-0.4, -0.3]], 0.14, 0.04), M.armor, { all: B.plainA }), 0, 0, -0.5);
+    place(p, P(cylX(0.24, 1.5), M.joint), 0, -0.18, 0);
+    // Hip armor blocks
+    this.hipPads = [-1, 1].map((s) => {
       const g = new THREE.Group();
-      g.position.set(s * 0.4, 0.2, 0.5);
-      g.rotation.z = s * 0.06;
+      g.position.set(s * 0.8, 0.1, 0);
+      g.rotation.z = s * 0.1;
       p.add(g);
-      place(g, P(frontPrism(mirror([[-0.32, 0], [0.3, 0], [0.33, -0.98], [-0.18, -0.86]], -s), 0.13, 0.035),
-        M.armor, { pz: B.noStep, nz: B.plainA, all: B.plainB }), 0, 0, 0.02);
-      place(g, P(chamferBox(0.2, 0.32, 0.05, 0.03), M.trim), s * 0.02, -0.62, 0.1);
+      place(g, P(sidePrism([[-0.5, 0.16], [0.46, 0.16], [0.56, -0.1], [0.36, -0.6], [-0.44, -0.56]], 0.22, 0.04),
+        M.second, { x: B.e07, all: B.plainA }));
+      place(g, P(chamferBox(0.24, 0.06, 0.8, 0.02), M.accent, { all: B.redBar }), 0, 0.17, 0);
       return g;
     });
-    // Side skirts
-    this.skirtS = [-1, 1].map((s) => {
-      const g = new THREE.Group();
-      g.position.set(s * 0.68, 0.22, -0.02);
-      g.rotation.z = s * 0.14;
-      p.add(g);
-      place(g, P(sidePrism([[-0.48, 0], [0.46, 0], [0.38, -0.92], [-0.4, -0.86]], 0.14, 0.035),
-        M.armor, { x: B.e07, all: B.plainB }), s * 0.07, 0, 0);
-      return g;
-    });
-    // Rear skirt with a weapon hardpoint
-    const r = new THREE.Group();
-    r.position.set(0, 0.18, -0.48);
-    p.add(r);
-    place(r, P(frontPrism([[-0.56, 0], [0.56, 0], [0.48, -0.8], [-0.48, -0.8]], 0.14, 0.035),
-      M.armor, { nz: B.plainA, all: B.plainB }));
-    place(r, P(chamferBox(0.3, 0.2, 0.12, 0.04), M.frame, { all: B.mechA }), 0, -0.35, -0.1);
-    this.skirtR = r;
   }
 
   buildLeg(s) {
     const M = this.mats;
     const hip = new THREE.Group();
-    hip.position.set(s * 0.54, -LEG.hipDrop, 0);
+    hip.position.set(s * 0.56, -LEG.hipDrop, 0);
     this.pelvis.add(hip);
     place(hip, P(new THREE.SphereGeometry(0.3, 16, 10), M.joint));
-    place(hip, P(new THREE.CylinderGeometry(0.22, 0.24, 1.5, 12), M.joint), 0, -0.8, 0);
-    // Thigh: short, slightly flared at the knee
+    // Exposed twin-strut thigh frame with an armor shell over the front and outside
+    for (const x of [-0.13, 0.13]) place(hip, P(new THREE.CylinderGeometry(0.11, 0.11, 0.95, 10), M.joint), x, -0.55, -0.04);
     place(hip, P(loft([
-      { y: -0.2, w: 0.58, d: 0.66, c: 0.14 },
-      { y: -0.95, w: 0.66, d: 0.74, c: 0.16 },
-      { y: -1.42, w: 0.6, d: 0.66, c: 0.15 },
-    ]), M.armor, { z: B.plainB, x: B.plainB, y: B.plainA }), 0, 0, 0.02);
-    place(hip, P(chamferBox(0.68, 0.1, 0.76, 0.04), M.joint), 0, -1.2, 0.02);
+      { y: -0.12, w: 0.64, d: 0.7, c: 0.15 },
+      { y: -0.6, w: 0.7, d: 0.78, c: 0.17 },
+      { y: -0.92, w: 0.6, d: 0.64, c: 0.14 },
+    ]), M.armor, { z: B.plainB, x: B.plainB, y: B.plainA }), s * 0.04, 0, 0.06);
 
     const knee = new THREE.Group();
     knee.position.y = -LEG.thigh;
     hip.add(knee);
-    place(knee, P(cylX(0.28, 0.66), M.joint));
-    // Knee guard
-    place(knee, P(sidePrism([[0.18, 0.44], [0.5, 0.22], [0.58, -0.3], [0.44, -0.62], [0.16, -0.42]], 0.64, 0.05),
-      M.armor, { pz: B.arrowPanel, all: B.plainA }));
-    place(knee, P(chamferBox(0.3, 0.16, 0.08, 0.04), M.joint), 0, 0.02, 0.58);
-
-    // Shin: tall, flaring toward the ankle with a deep calf for the vernier bay
+    place(knee, P(cylX(0.3, 0.72), M.joint));
+    // Big angular knee pad
+    place(knee, P(sidePrism([[0.12, 0.46], [0.56, 0.22], [0.64, -0.26], [0.46, -0.56], [0.12, -0.36]], 0.74, 0.05),
+      M.second, { pz: B.arrowPanel, all: B.plainA }));
+    // Chunky shin
     const SH = LEG.shin;
     place(knee, P(loft([
-      { y: -0.05, w: 0.7, d: 0.74, c: 0.16, z: -0.02 },
-      { y: -0.65, w: 0.8, d: 0.96, c: 0.2, z: -0.08 },
-      { y: -1.45, w: 0.9, d: 1.06, c: 0.22, z: -0.1 },
-      { y: -SH + 0.12, w: 0.92, d: 1.0, c: 0.22, z: -0.04 },
-      { y: -SH, w: 0.82, d: 0.86, c: 0.2, z: 0 },
+      { y: -0.05, w: 0.86, d: 0.86, c: 0.18, z: -0.04 },
+      { y: -0.5, w: 1.0, d: 1.1, c: 0.24, z: -0.08 },
+      { y: -1.08, w: 1.04, d: 1.12, c: 0.24, z: -0.06 },
+      { y: -SH, w: 0.9, d: 0.92, c: 0.2 },
     ]), M.armor, { pz: B.plainB, nz: B.plainA, x: B.sideVents, y: B.plainA }));
-    // Shin front plate with the service-access stencil
-    place(knee, P(frontPrism([[-0.3, 0], [0.3, 0], [0.37, -1.05], [0.32, -1.45], [-0.32, -1.45], [-0.37, -1.05]], 0.12, 0.035),
-      M.armor, { pz: B.e07, all: B.plainA }), 0, -0.3, 0.46, -0.04);
-    place(knee, P(chamferBox(0.94, 0.12, 0.7, 0.04), M.accent, { all: B.redBar }), 0, -SH + 0.42, 0.2);
+    // Shin blade with a stencil
+    place(knee, P(frontPrism([[-0.38, 0], [0.38, 0], [0.42, -0.62], [0, -1.02], [-0.42, -0.62]], 0.14, 0.04),
+      M.armor, { pz: B.e07, all: B.plainA }), 0, -0.22, 0.56, -0.05);
+    place(knee, P(chamferBox(1.06, 0.1, 0.8, 0.03), M.accent, { all: B.redBar }), 0, -SH + 0.3, 0.06);
+    // Knee hydraulics: thigh frame to calf
+    this.pistons.push(new Piston(hip, new V3(0, -0.45, -0.38), knee, new V3(0, -0.42, -0.5), 0.075, M));
 
-    // Calf vernier bay: recessed frame, two small nozzles, armored covers that open
-    const bayY = -1.2;
-    place(knee, P(chamferBox(0.62, 0.84, 0.14, 0.06), M.frame, { all: B.ventDark }), 0, bayY, -0.6);
+    // Calf vernier bay behind armored covers
+    const bayY = -0.78;
+    place(knee, P(chamferBox(0.62, 0.66, 0.14, 0.06), M.frame, { all: B.ventDark }), 0, bayY, -0.6);
     const calfThr = [];
     for (const x of [-0.15, 0.15]) {
       const t = new Thruster(knee, new V3(x, bayY + 0.05, -0.64), new V3(0, -0.85, -0.6), 0.15, this.glowTex);
       calfThr.push(t);
       this.thrusters.calf.push(t);
     }
-    // Two-piece armored cover; it swings open when the verniers fire
-    for (const [hy, open] of [[bayY + 0.44, 1.1], [bayY + 0.02, 1.5]]) {
+    for (const [hy, open] of [[bayY + 0.36, 1.1], [bayY + 0.02, 1.5]]) {
       const pivot = new THREE.Group();
       pivot.position.set(0, hy, -0.74);
       knee.add(pivot);
-      place(pivot, P(chamferBox(0.68, 0.44, 0.07, 0.05), M.armor, { all: B.plainA, nz: B.hot }), 0, -0.22, 0);
+      place(pivot, P(chamferBox(0.68, 0.36, 0.07, 0.05), M.armor, { all: B.plainA, nz: B.hot }), 0, -0.18, 0);
       for (const t of calfThr) t.flaps.push({ pivot, open });
     }
 
     const mount = new THREE.Group();
-    mount.position.set(s * 0.48, -1.0, 0.0);
+    mount.position.set(s * 0.56, -0.72, 0.0);
     mount.rotation.z = -s * Math.PI / 2;
     knee.add(mount);
 
     const ankle = new THREE.Group();
     ankle.position.y = -SH;
     knee.add(ankle);
-    place(ankle, P(new THREE.SphereGeometry(0.24, 14, 10), M.joint));
-    // Big wedge foot with a notched heel for the heel vernier
-    place(ankle, P(sidePrism([[-0.46, -0.06], [0.32, -0.06], [0.98, -0.32], [1.1, -0.5], [1.1, -0.55], [-0.24, -0.55],
-      [-0.28, -0.36], [-0.56, -0.3]], 0.8, 0.05),
-    M.armor, { py: B.footPanel, pz: B.plainB, x: B.footPanel, ny: B.greyPlate }));
-    place(ankle, P(chamferBox(0.84, 0.08, 1.36, 0.04), M.joint), 0, -0.53, 0.42);
-    // Red toe cap and ankle guard
-    place(ankle, P(loft([{ y: -0.2, w: 0.7, d: 0.3, c: 0.08 }, { y: -0.46, w: 0.82, d: 0.42, c: 0.1 }]), M.accent, { all: B.redSmall }), 0, 0, 0.86);
-    place(ankle, P(sidePrism([[0.12, 0.3], [0.42, 0.1], [0.46, -0.18], [0.12, -0.12]], 0.56, 0.04), M.accent, { all: B.redSmall }));
-    this.thrusters.sole.push(new Thruster(ankle, new V3(0, -0.36, -0.44), new V3(0, -1, -0.35), 0.18, this.glowTex));
+    place(ankle, P(new THREE.SphereGeometry(0.26, 14, 10), M.joint));
+    // Wide, flat foot with split toes
+    place(ankle, P(sidePrism([[-0.48, -0.05], [0.22, -0.05], [0.62, -0.22], [0.7, -0.5], [-0.26, -0.5],
+      [-0.3, -0.33], [-0.6, -0.28]], 0.98, 0.05),
+    M.second, { py: B.footPanel, x: B.footPanel, ny: B.greyPlate, z: B.plainB }));
+    for (const x of [-0.25, 0.25]) {
+      place(ankle, P(loft([{ y: -0.2, w: 0.42, d: 0.36, c: 0.08 }, { y: -0.5, w: 0.46, d: 0.48, c: 0.1 }]), M.armor,
+        { all: B.plainA }), x, 0, 0.86);
+    }
+    place(ankle, P(chamferBox(1.02, 0.06, 1.56, 0.04), M.joint), 0, -0.5, 0.24);
+    place(ankle, P(sidePrism([[0.1, 0.32], [0.42, 0.1], [0.46, -0.2], [0.1, -0.12]], 0.62, 0.04), M.armor, { all: B.plainA }));
+    this.thrusters.sole.push(new Thruster(ankle, new V3(0, -0.32, -0.46), new V3(0, -1, -0.35), 0.2, this.glowTex));
 
     return { s, hip, knee, ankle, mount };
   }
@@ -461,43 +482,44 @@ export class Mech {
   buildTorso() {
     const M = this.mats;
     const waist = (this.waist = new THREE.Group());
-    waist.position.y = 0.32;
+    waist.position.y = 0.3;
     waist.rotation.order = 'YXZ';
     this.body.add(waist);
-    place(waist, P(new THREE.CylinderGeometry(0.4, 0.46, 0.66, 14), M.joint), 0, 0.2, 0);
-    // Red abdomen block (the core block hatch)
-    place(waist, P(loft([{ y: 0.42, w: 0.86, d: 0.5, c: 0.12 }, { y: -0.02, w: 0.7, d: 0.42, c: 0.1 }]), M.accent,
-      { pz: B.a01, all: B.redSmall }), 0, 0, 0.18);
-    for (const s of [-1, 1]) place(waist, P(chamferBox(0.1, 0.3, 0.3, 0.03), M.trim), s * 0.46, 0.22, 0.22);
+    place(waist, P(new THREE.CylinderGeometry(0.42, 0.48, 0.6, 14), M.joint), 0, 0.15, 0);
+    for (const s of [-1, 1]) place(waist, P(new THREE.CylinderGeometry(0.06, 0.06, 0.5, 8), M.frame), s * 0.3, 0.2, 0.36);
+    place(waist, P(loft([{ y: 0.38, w: 0.72, d: 0.3, c: 0.08 }, { y: 0.02, w: 0.56, d: 0.26, c: 0.06 }]), M.second, { all: B.plainA }), 0, 0, 0.36);
 
     const chest = (this.chest = new THREE.Group());
-    chest.position.y = 0.48;
+    chest.position.y = 0.42;
     waist.add(chest);
-    // Blue chest: wide at the shoulders, narrowing at the waist
+    // Core block: deep, chunky, leaning forward at the chest
     place(chest, P(loft([
-      { y: 1.12, w: 1.7, d: 1.12, c: 0.3, z: -0.04 },
-      { y: 0.95, w: 2.12, d: 1.3, c: 0.32 },
-      { y: 0.45, w: 2.0, d: 1.24, c: 0.3 },
-      { y: 0.0, w: 1.44, d: 1.02, c: 0.24, z: 0.02 },
-    ]), M.second, { all: B.plainA, x: B.sideVents }));
-    // Raised chest plates holding the yellow intake vents
+      { y: 1.28, w: 1.5, d: 1.06, c: 0.26, z: -0.04 },
+      { y: 1.02, w: 2.0, d: 1.36, c: 0.3, z: 0.02 },
+      { y: 0.42, w: 1.96, d: 1.42, c: 0.3, z: 0.08 },
+      { y: 0.0, w: 1.36, d: 1.04, c: 0.22 },
+    ]), M.armor, { all: B.plainA, x: B.sideVents }));
+    // Framed cockpit hatch with the unit number
+    const hatch = [[-0.48, 0], [0.48, 0], [0.56, 0.38], [0.4, 0.78], [-0.4, 0.78], [-0.56, 0.38]];
+    const h2 = hatch.map(([x, y]) => [x * 0.82, y * 0.82]);
+    place(chest, P(frontPrism(h2, 0.12, 0.03), M.frame, { all: B.mechA }), 0, 0.3, 0.76);
+    place(chest, P(frontPrism(h2.map(([x, y]) => [x * 0.84, y * 0.84 + 0.05]), 0.1, 0.03), M.armor, { pz: B.panel07, all: B.plainA }), 0, 0.3, 0.82);
     for (const s of [-1, 1]) {
-      place(chest, P(frontPrism(mirror([[0.1, 0], [0.82, 0], [0.92, 0.48], [0.86, 0.6], [0.16, 0.6], [0.06, 0.42]], s), 0.14, 0.04),
-        M.second, { all: B.plainA }), 0, 0.42, 0.62);
-      place(chest, P(frontPrism(mirror([[0.2, 0.05], [0.74, 0.05], [0.8, 0.42], [0.24, 0.48], [0.14, 0.36]], s), 0.1, 0.03),
-        M.vent, { pz: B.ventFrame, all: B.plainA }), 0, 0.46, 0.7);
+      // Side intakes angled across the chest corners
+      const intake = place(chest, P(frontPrism(mirror([[-0.18, -0.26], [0.2, -0.26], [0.24, 0.26], [-0.14, 0.3]], s), 0.2, 0.04),
+        M.frame, { pz: B.ventDark, all: B.plainA }), s * 0.8, 0.56, 0.58);
+      intake.rotation.y = s * 0.4;
+      // Colored side panels
+      place(chest, P(sidePrism([[-0.5, 0.12], [0.55, 0.12], [0.6, 0.9], [-0.45, 1.0]], 0.1, 0.03), M.second, { x: B.plainA, all: B.plainA }), s * 1.0, 0, 0.04);
+      // Collar guards flanking the head
+      place(chest, P(loft([{ y: 0, w: 0.42, d: 0.9, c: 0.12 }, { y: 0.22, w: 0.3, d: 0.68, c: 0.1, z: -0.04 }]), M.second, { all: B.plainA }), s * 0.66, 1.2, -0.08);
+      place(chest, P(chamferBox(0.32, 0.05, 0.6, 0.02), M.accent, { all: B.redBar }), s * 0.66, 1.43, -0.1);
     }
-    // Center keel and cockpit hatch seam
-    place(chest, P(frontPrism([[-0.1, 0], [0.1, 0], [0.12, 0.7], [-0.12, 0.7]], 0.1, 0.03), M.second, { all: B.plainA }), 0, 0.22, 0.66);
-    place(chest, P(chamferBox(0.16, 0.06, 0.04, 0.02), M.sensor), 0, 0.82, 0.72);
-    // White collar with a V-notch at the front
-    place(chest, P(frontPrism([[-0.78, 0], [0.78, 0], [0.62, 0.24], [0.26, 0.2], [0, 0.06], [-0.26, 0.2], [-0.62, 0.24]], 0.96, 0.04),
-      M.armor, { all: B.plainB }), 0, 1.1, -0.12);
+    place(chest, P(chamferBox(1.16, 0.08, 0.1, 0.03), M.frame, { all: B.hazard }), 0, 1.14, 0.64);
 
-    // Shoulder weapon mounts ride on the chest, not the arms
     for (const [key, s] of [['shoulderR', -1], ['shoulderL', 1]]) {
       const m = new THREE.Group();
-      m.position.set(s * 1.26, 1.2, -0.82);
+      m.position.set(s * 1.3, 1.2, -0.7);
       m.rotation.x = -0.1;
       chest.add(m);
       this.mounts[key] = m;
@@ -507,95 +529,99 @@ export class Mech {
   buildHead() {
     const M = this.mats;
     const head = (this.head = new THREE.Group());
-    head.position.set(0, 1.2, 0.04);
+    head.position.set(0, 1.34, 0.1);
+    head.scale.setScalar(1.22);
     head.rotation.order = 'YXZ';
     this.chest.add(head);
-    place(head, P(new THREE.CylinderGeometry(0.15, 0.2, 0.3, 10), M.joint), 0, 0.02, 0);
-    // Helmet
+    place(head, P(new THREE.CylinderGeometry(0.17, 0.22, 0.36, 10), M.joint), 0, -0.04, 0);
+    // Low, wide wedge helmet
     place(head, P(loft([
-      { y: 0.08, w: 0.6, d: 0.6, c: 0.14 },
-      { y: 0.42, w: 0.66, d: 0.66, c: 0.16 },
-      { y: 0.64, w: 0.48, d: 0.56, c: 0.14, z: -0.02 },
+      { y: 0.06, w: 0.74, d: 0.76, c: 0.16 },
+      { y: 0.3, w: 0.88, d: 0.86, c: 0.2, z: 0.04 },
+      { y: 0.52, w: 0.62, d: 0.68, c: 0.16, z: -0.03 },
     ]), M.armor, { all: B.plainA }));
-    // Brow ridge over the eyes
-    place(head, P(frontPrism([[-0.3, 0], [0.3, 0], [0.26, 0.1], [-0.26, 0.1]], 0.1, 0.02), M.armor, { all: B.plainA }), 0, 0.42, 0.3);
-    // Dark face recess with the twin eyes
-    place(head, P(frontPrism([[-0.25, 0.12], [0.25, 0.12], [0.27, 0.43], [-0.27, 0.43]], 0.06, 0.01), M.joint), 0, 0, 0.31);
-    for (const s of [-1, 1]) {
-      const eye = place(head, new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.055, 0.03), M.eye), s * 0.115, 0.355, 0.345);
-      eye.rotation.z = s * 0.24;
+    // Visor band with a single glowing slit
+    place(head, P(frontPrism([[-0.42, 0], [0.42, 0], [0.4, 0.17], [-0.4, 0.17]], 0.08, 0.01), M.joint), 0, 0.24, 0.44);
+    place(head, new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.045, 0.03), M.eye), 0, 0.33, 0.49);
+    // Asymmetric lens cluster on the right cheek
+    for (const [x, y, r] of [[-0.29, 0.15, 0.06], [-0.18, 0.15, 0.04], [-0.1, 0.15, 0.028]]) {
+      place(head, P(cylZ(r * 1.35, r * 1.35, 0.06, 12), M.joint), x, y, 0.47);
+      place(head, new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), M.lens), x, y, 0.5);
     }
-    // Faceplate with vent slits, red chin
-    place(head, P(frontPrism([[-0.17, 0.06], [0.17, 0.06], [0.21, 0.24], [0.08, 0.3], [-0.08, 0.3], [-0.21, 0.24]], 0.1, 0.02),
-      M.armor, { all: B.plainA }), 0, 0, 0.34);
-    for (const x of [-0.12, -0.075, 0.075, 0.12]) place(head, new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.11, 0.02), M.joint), x, 0.17, 0.4);
-    place(head, P(chamferBox(0.13, 0.08, 0.1, 0.02), M.red), 0, 0.05, 0.36);
-    // Forehead camera and V-fin
-    place(head, P(chamferBox(0.11, 0.13, 0.1, 0.02), M.red), 0, 0.52, 0.34);
-    place(head, new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), M.eye), 0, 0.53, 0.4);
+    // Brow overhang with a red stripe
+    const brow = place(head, P(frontPrism([[-0.47, 0], [0.47, 0], [0.38, 0.1], [-0.38, 0.1]], 0.32, 0.03), M.armor, { all: B.plainA }), 0, 0.4, 0.34);
+    brow.rotation.x = -0.12;
+    place(head, P(chamferBox(0.5, 0.04, 0.05, 0.01), M.red), 0, 0.47, 0.5);
+    // Jaw guard with grille slits
+    place(head, P(frontPrism([[-0.3, 0], [0.3, 0], [0.38, 0.15], [-0.38, 0.15]], 0.22, 0.03), M.armor, { all: B.plainA }), 0, 0.04, 0.38);
+    for (const x of [0.08, 0.16, 0.24]) place(head, new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.09, 0.02), M.joint), x, 0.11, 0.5);
+    // Dorsal crest
+    place(head, P(sidePrism([[0.42, 0], [0.12, 0.16], [-0.42, 0.11], [-0.46, 0]], 0.06, 0.01), M.trim), 0, 0.5, 0);
+    // One-sided blade antenna and a short whip on the other side
+    const blade = place(head, P(frontPrism([[-0.03, 0], [0.04, 0], [0.01, 0.78]], 0.025, 0.004), M.trim), 0.38, 0.36, -0.12);
+    blade.rotation.set(-0.35, 0, -0.3);
+    place(head, P(new THREE.CylinderGeometry(0.015, 0.025, 0.4, 6), M.joint), -0.38, 0.55, -0.16, -0.3, 0, 0.2);
     for (const s of [-1, 1]) {
-      place(head, P(frontPrism(mirror([[0, 0], [0.08, 0.02], [0.66, 0.4], [0.64, 0.47], [0, 0.13]], s), 0.045, 0.01), M.trim), 0, 0.5, 0.36);
-      // Head vulcans in the temples
-      place(head, P(chamferBox(0.1, 0.12, 0.2, 0.03), M.armor, { all: B.plainA }), s * 0.3, 0.46, 0.22);
-      place(head, P(cylZ(0.035, 0.035, 0.12, 8), M.joint), s * 0.3, 0.46, 0.33);
-      // Ear blocks
-      place(head, P(chamferBox(0.1, 0.3, 0.34, 0.04), M.armor, { all: B.plainB }), s * 0.36, 0.3, -0.02);
-      place(head, P(cylX(0.08, 0.04, 10), M.trim), s * 0.42, 0.3, -0.02);
+      place(head, P(cylX(0.13, 0.12, 12), M.frame, { all: B.mechA }), s * 0.47, 0.24, -0.02);
+      place(head, P(cylX(0.08, 0.03, 10), M.trim), s * 0.54, 0.24, -0.02);
     }
-    place(head, P(new THREE.CylinderGeometry(0.02, 0.03, 0.5, 6), M.joint), 0.18, 0.78, -0.25, -0.3, 0, -0.2);
   }
 
   buildArm(s) {
     const M = this.mats;
     const sh = new THREE.Group();
-    sh.position.set(s * 1.24, 0.86, 0);
+    sh.position.set(s * 1.22, 0.95, 0);
     sh.rotation.order = 'YXZ';
     this.chest.add(sh);
-    place(sh, P(new THREE.SphereGeometry(0.32, 14, 10), M.joint));
-    // Shoulder armor: a broad block with a sloped top and the unit number on its face
+    place(sh, P(new THREE.SphereGeometry(0.33, 14, 10), M.joint));
+    // Angled shoulder shield: a heavy upper plate over a colored skirt plate
     const pauldron = new THREE.Group();
-    pauldron.position.set(s * 0.24, 0.08, 0);
+    pauldron.position.set(s * 0.24, 0.12, 0);
+    pauldron.rotation.z = s * 0.16;
     sh.add(pauldron);
-    place(pauldron, P(sidePrism([[-0.6, -0.42], [-0.62, 0.2], [-0.42, 0.5], [0.42, 0.5], [0.62, 0.2], [0.6, -0.42], [0.46, -0.56], [-0.46, -0.56]], 0.96, 0.07),
-      M.armor, { x: B.panel07, py: B.plainA, z: B.plainB, ny: B.plainB }));
-    place(pauldron, P(chamferBox(0.98, 0.1, 0.14, 0.03), M.accent, { all: B.redBar }), 0, 0.32, 0.6);
+    place(pauldron, P(sidePrism([[-0.64, -0.46], [-0.68, 0.14], [-0.46, 0.46], [0.5, 0.46], [0.68, 0.12], [0.62, -0.46]], 0.66, 0.06),
+      M.armor, { x: B.panel07, y: B.plainA, z: B.plainB }), s * 0.18, 0, 0);
+    place(pauldron, P(sidePrism([[-0.56, 0], [0.56, 0], [0.5, -0.36], [-0.5, -0.36]], 0.7, 0.04), M.second, { all: B.plainA }), s * 0.24, -0.42, 0);
+    place(pauldron, P(chamferBox(0.44, 0.05, 0.96, 0.02), M.frame, { all: B.hazard }), s * 0.18, 0.47, 0);
 
-    // Short upper arm
-    place(sh, P(new THREE.CylinderGeometry(0.21, 0.21, 0.6, 12), M.joint), 0, -0.4, 0);
-    place(sh, P(loft([{ y: -0.42, w: 0.52, d: 0.54, c: 0.12 }, { y: -0.88, w: 0.54, d: 0.56, c: 0.13 }]), M.armor, { all: B.plainB }));
+    // Upper arm: frame with an outer armor shell
+    place(sh, P(new THREE.CylinderGeometry(0.2, 0.2, 0.6, 12), M.joint), 0, -0.35, 0);
+    place(sh, P(loft([{ y: -0.3, w: 0.44, d: 0.5, c: 0.1 }, { y: -0.7, w: 0.48, d: 0.54, c: 0.12 }]), M.armor, { all: B.plainB }), s * 0.06, 0, 0);
 
     const elbow = new THREE.Group();
-    elbow.position.y = -0.98;
+    elbow.position.y = -0.84;
     sh.add(elbow);
-    place(elbow, P(cylX(0.23, 0.54), M.joint));
-    // Long forearm, thickest just above the wrist
+    place(elbow, P(cylX(0.24, 0.56), M.joint));
+    // Chunky forearm with an outer plate
     place(elbow, P(loft([
-      { y: -0.06, w: 0.56, d: 0.6, c: 0.13 },
-      { y: -0.75, w: 0.7, d: 0.74, c: 0.16 },
-      { y: -1.08, w: 0.68, d: 0.72, c: 0.16 },
-      { y: -1.18, w: 0.58, d: 0.62, c: 0.13 },
+      { y: -0.05, w: 0.62, d: 0.66, c: 0.14 },
+      { y: -0.6, w: 0.76, d: 0.8, c: 0.17 },
+      { y: -0.88, w: 0.74, d: 0.78, c: 0.17 },
+      { y: -0.98, w: 0.62, d: 0.66, c: 0.14 },
     ]), M.armor, { x: B.r07, z: B.plainB, y: B.plainA }));
-    place(elbow, P(chamferBox(0.72, 0.1, 0.76, 0.03), M.trim), 0, -0.98, 0);
+    place(elbow, P(sidePrism([[-0.4, -0.08], [0.3, -0.08], [0.42, -0.84], [-0.4, -0.8]], 0.1, 0.03), M.second, { all: B.plainA }), s * 0.41, 0, 0);
+    // Elbow hydraulics
+    this.pistons.push(new Piston(sh, new V3(0, -0.42, 0.28), elbow, new V3(0, -0.34, 0.36), 0.06, M));
 
     const shieldMount = new THREE.Group();
-    shieldMount.position.set(s * 0.42, -0.6, 0.04);
-    // The shield stands upright when the forearm is level: its long axis runs along the
-    // forearm's +Z and its face points outward.
+    shieldMount.position.set(s * 0.48, -0.5, 0.04);
     {
       const Z = new V3(s, 0, 0), Y = new V3(0, 0, 1), X = new V3().crossVectors(Y, Z);
       shieldMount.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Y, Z));
     }
+    shieldMount.scale.setScalar(0.85);
     elbow.add(shieldMount);
 
     const hand = new THREE.Group();
-    hand.position.set(0, -1.2, 0.03);
+    hand.position.set(0, -1.02, 0.03);
     elbow.add(hand);
-    place(hand, P(chamferBox(0.36, 0.38, 0.44, 0.07), M.joint), 0, -0.17, 0);
-    place(hand, P(chamferBox(0.34, 0.18, 0.44, 0.05), M.joint), 0, -0.38, 0.06, 0.35);
-    place(hand, P(chamferBox(0.11, 0.26, 0.13, 0.03), M.joint), -s * 0.18, -0.23, 0.18, 0.3);
+    place(hand, P(chamferBox(0.42, 0.42, 0.5, 0.08), M.joint), 0, -0.18, 0);
+    place(hand, P(chamferBox(0.4, 0.2, 0.5, 0.05), M.joint), 0, -0.42, 0.07, 0.35);
+    place(hand, P(chamferBox(0.12, 0.28, 0.14, 0.03), M.joint), -s * 0.21, -0.25, 0.2, 0.3);
     const mount = new THREE.Group();
-    mount.position.set(0, -0.26, 0.02);
+    mount.position.set(0, -0.28, 0.02);
     mount.rotation.x = Math.PI / 2;
+    mount.scale.setScalar(0.85);
     hand.add(mount);
     return { s, sh, pauldron, elbow, hand, mount, shieldMount };
   }
@@ -603,57 +629,51 @@ export class Mech {
   buildBackpack() {
     const M = this.mats;
     const bp = new THREE.Group();
-    bp.position.set(0, 0.56, -0.62);
+    bp.position.set(0, 0.5, -0.68);
     this.chest.add(bp);
     this.backpack = bp;
-    // Main pack
+    // Booster pack
     place(bp, P(loft([
-      { y: 0.66, w: 1.26, d: 0.5, c: 0.14, z: -0.2 },
-      { y: 0.1, w: 1.4, d: 0.6, c: 0.16, z: -0.24 },
-      { y: -0.36, w: 1.32, d: 0.56, c: 0.16, z: -0.22 },
+      { y: 0.62, w: 1.5, d: 0.55, c: 0.16, z: -0.2 },
+      { y: 0.1, w: 1.58, d: 0.62, c: 0.18, z: -0.24 },
+      { y: -0.32, w: 1.34, d: 0.56, c: 0.16, z: -0.22 },
     ]), M.armor, { nz: B.plainA, pz: B.plainA, x: B.vent, y: B.plainA }));
-    // Intake grille set into the back of the pack
-    place(bp, P(chamferBox(0.62, 0.5, 0.08, 0.08), M.armor, { all: B.danger }), 0, 0.22, -0.53);
-    place(bp, P(chamferBox(1.0, 0.1, 0.08, 0.03), M.frame, { all: B.hazard }), 0, 0.56, -0.5);
+    place(bp, P(chamferBox(0.62, 0.5, 0.08, 0.08), M.armor, { all: B.danger }), 0, 0.2, -0.55);
+    place(bp, P(chamferBox(1.1, 0.1, 0.08, 0.03), M.frame, { all: B.hazard }), 0, 0.54, -0.52);
 
     for (const s of [-1, 1]) {
-      // Beam saber racks
-      const hilt = new THREE.Group();
-      hilt.position.set(s * 0.44, 0.62, -0.3);
-      hilt.rotation.set(-0.38, 0, -s * 0.22);
-      bp.add(hilt);
-      place(hilt, P(new THREE.CylinderGeometry(0.1, 0.1, 0.24, 10), M.joint), 0, -0.02, 0);
-      place(hilt, P(new THREE.CylinderGeometry(0.085, 0.085, 0.6, 10), M.armor, { all: B.plainB }), 0, 0.36, 0);
-      place(hilt, P(new THREE.CylinderGeometry(0.1, 0.1, 0.08, 10), M.red), 0, 0.68, 0);
+      // Radiator fins raked back over the shoulders
+      const fin = new THREE.Group();
+      fin.position.set(s * 0.5, 0.56, -0.36);
+      fin.rotation.set(-0.55, 0, -s * 0.3);
+      bp.add(fin);
+      place(fin, P(frontPrism([[-0.1, 0], [0.1, 0], [0.13, 0.82], [0, 0.98], [-0.1, 0.8]], 0.07, 0.015), M.second, { all: B.plainA }));
+      for (const y of [0.25, 0.45, 0.65]) place(fin, P(chamferBox(0.22, 0.03, 0.09, 0.01), M.joint), 0, y, 0);
 
-      // Main thruster housing: an armored block bolted to the pack's lower corner
-      const hx = s * 0.4;
+      // Main thruster housing under the pack's lower corner
+      const hx = s * 0.42;
       place(bp, P(loft([
         { y: -0.2, w: 0.56, d: 0.7, c: 0.14, z: -0.36 },
         { y: -0.62, w: 0.6, d: 0.74, c: 0.16, z: -0.42 },
         { y: -0.84, w: 0.5, d: 0.6, c: 0.14, z: -0.44 },
       ]), M.armor, { x: B.hot, nz: B.plainA, pz: B.plainA, y: B.plainA }), hx, 0, 0);
       place(bp, P(chamferBox(0.62, 0.1, 0.76, 0.04), M.joint), hx, -0.36, -0.42);
-      // Gimbal mount plate on the housing's rear-lower corner
       const dir = new V3(0, -1, -0.45).normalize();
       const mountPos = new V3(hx, -0.84, -0.6);
       const plate = place(bp, P(new THREE.CylinderGeometry(0.34, 0.38, 0.12, 16), M.joint), mountPos.x, mountPos.y, mountPos.z);
       plate.quaternion.setFromUnitVectors(new V3(0, -1, 0), dir);
-      // Feed line from the pack into the housing
       place(bp, P(new THREE.CylinderGeometry(0.05, 0.05, 0.5, 8), M.joint), hx + s * 0.3, -0.42, -0.62, 0.3, 0, 0);
-      const main = new Thruster(bp, mountPos.clone().addScaledVector(dir, 0.02), dir, 0.44, this.glowTex, {
+      this.thrusters.main.push(new Thruster(bp, mountPos.clone().addScaledVector(dir, 0.02), dir, 0.44, this.glowTex, {
         actuators: [new V3(hx + 0.3, -0.7, -0.5), new V3(hx - 0.3, -0.7, -0.5), new V3(hx, -0.72, -0.82)],
-      });
-      this.thrusters.main.push(main);
+      }));
 
-      // Vernier pods high on the pack's outer corners
-      const vx = s * 0.72;
-      place(bp, P(loft([{ y: 0.5, w: 0.26, d: 0.4, c: 0.07, z: -0.3 }, { y: 0.12, w: 0.3, d: 0.46, c: 0.08, z: -0.34 }]), M.armor,
+      // Vernier pods on the pack's outer corners
+      const vx = s * 0.8;
+      place(bp, P(loft([{ y: 0.42, w: 0.26, d: 0.42, c: 0.07, z: -0.3 }, { y: 0.04, w: 0.3, d: 0.48, c: 0.08, z: -0.34 }]), M.second,
         { all: B.plainA, x: B.ventB }), vx, 0, 0);
-      this.thrusters.vern.push(new Thruster(bp, new V3(vx, 0.3, -0.58), new V3(s * 0.25, 0.05, -1), 0.17, this.glowTex));
+      this.thrusters.vern.push(new Thruster(bp, new V3(vx, 0.22, -0.6), new V3(s * 0.25, 0.05, -1), 0.17, this.glowTex));
     }
 
-    // Thruster wash light: one fixed light so shader variants never change
     this.thrustLight = new THREE.PointLight(0x8fb8ff, 0, 22, 1.8);
     this.thrustLight.position.set(0, -1.6, -0.9);
     bp.add(this.thrustLight);
@@ -704,12 +724,12 @@ export class Mech {
     const pose = [];
     for (let i = 0; i < 2; i++) {
       const p = ph + (i === 1 ? 0 : Math.PI);
-      let hip = -Math.sin(p) * 0.5 * g;
-      let knee = 0.1 + Math.max(0, Math.cos(p)) * 0.95 * g + 0.12 * g;
-      const airHip = i === 1 ? -0.55 : 0.12, airKnee = i === 1 ? 1.0 : 0.38;
+      let hip = -Math.sin(p) * 0.55 * g;
+      let knee = 0.14 + Math.max(0, Math.cos(p)) * 1.0 * g + 0.12 * g;
+      const airHip = i === 1 ? -0.6 : 0.1, airKnee = i === 1 ? 1.05 : 0.4;
       hip += (airHip - hip) * w.air;
       knee += (airKnee - knee) * w.air;
-      const dHip = i === 1 ? 0.12 : 0.32, dKnee = i === 1 ? 0.55 : 0.75;
+      const dHip = i === 1 ? 0.1 : 0.3, dKnee = i === 1 ? 0.6 : 0.8;
       hip += (dHip - hip) * w.dash;
       knee += (dKnee - knee) * w.dash;
       hip -= 0.6 * w.crouch;
@@ -723,25 +743,24 @@ export class Mech {
     for (let i = 0; i < 2; i++) {
       const L = this.legs[i], q = pose[i];
       L.hip.rotation.x = q.hip;
-      L.hip.rotation.z = L.s * (0.05 + 0.05 * w.air);
+      L.hip.rotation.z = L.s * (0.06 + 0.05 * w.air);
       L.knee.rotation.x = q.knee;
       L.ankle.rotation.x = q.ankle;
-      L.ankle.rotation.z = -L.s * 0.05;
+      L.ankle.rotation.z = -L.s * 0.06;
       const h = LEG.foot + LEG.thigh * Math.cos(q.hip) + LEG.shin * Math.cos(q.hip + q.knee) + LEG.hipDrop;
       height = Math.max(height, h);
-      this.skirtF[i].rotation.x = Math.min(0, q.hip) * 0.85 - 0.06;
+      this.hipPads[i].rotation.x = Math.min(0, q.hip) * 0.45;
     }
-    this.skirtR.rotation.x = Math.max(0, Math.max(pose[0].hip, pose[1].hip)) * 0.6 + 0.05;
 
-    const bob = -Math.abs(Math.cos(ph)) * 0.1 * g * (1 - w.air) * (1 - w.dash);
+    const bob = -Math.abs(Math.cos(ph)) * 0.09 * g * (1 - w.air) * (1 - w.dash);
     this.body.position.y = height + bob;
-    this.body.rotation.z = Math.sin(ph) * 0.025 * g * (1 - w.air);
-    this.pelvis.rotation.z = -Math.sin(ph) * 0.03 * g;
+    this.body.rotation.z = Math.sin(ph) * 0.03 * g * (1 - w.air);
+    this.pelvis.rotation.z = -Math.sin(ph) * 0.035 * g;
 
     // --- torso ---
     const idleBreath = Math.sin(t * 1.6) * 0.012;
-    this.waist.rotation.y = clamp(w.twist, -1.1, 1.1) + Math.sin(ph) * 0.07 * g;
-    this.waist.rotation.x = 0.06 + w.dash * 0.32 + w.crouch * 0.25 - st.aimPitch * 0.12 + idleBreath + g * 0.05;
+    this.waist.rotation.y = clamp(w.twist, -1.1, 1.1) + Math.sin(ph) * 0.08 * g;
+    this.waist.rotation.x = 0.08 + w.dash * 0.32 + w.crouch * 0.25 - st.aimPitch * 0.12 + idleBreath + g * 0.06;
     this.head.rotation.y = clamp((st.aimYaw - w.twist) * 0.8, -0.6, 0.6) + Math.sin(t * 0.37) * 0.04 * (1 - w.aim[0]);
     this.head.rotation.x = clamp(-st.aimPitch * 0.65, -0.5, 0.45) - (w.dash * 0.25) - this.waist.rotation.x * 0.5;
 
@@ -750,14 +769,14 @@ export class Mech {
       const A = this.arms[i], s = A.s;
       const swing = -Math.sin(ph + (i === 0 ? 0 : Math.PI)) * 0.32 * g * (1 - w.dash);
       const isShield = i === 1 && st.hasShield;
-      let shx = 0.12 + swing, shy = 0, shz = s * 0.1, elx = isShield ? -1.25 : -0.85;
+      let shx = 0.12 + swing, shy = 0, shz = s * 0.12, elx = isShield ? -1.25 : -0.9;
       shx += (0.35 - shx) * w.dash * 0.8;
       shz += s * 0.25 * w.air;
       const a = w.aim[i];
       const aimX = -Math.PI / 2 - st.aimPitch - this.waist.rotation.x + 0.06;
       shx += (aimX - shx) * a;
       shy += (-s * 0.14 - shy) * a;
-      shz += (s * 0.04 - shz) * a;
+      shz += (s * 0.05 - shz) * a;
       elx += (-0.12 - elx) * a;
       if (isShield) {
         const b = w.shield;
@@ -773,7 +792,7 @@ export class Mech {
       A.sh.rotation.set(shx, shy, shz);
       A.elbow.rotation.x = elx;
       A.hand.rotation.x = -0.05 + w.recoil[i] * 0.15;
-      A.pauldron.rotation.x = -shx * 0.55;
+      A.pauldron.rotation.x = -shx * 0.5;
     }
 
     // --- thrusters ---
@@ -785,6 +804,11 @@ export class Mech {
     for (const x of T.calf) x.set(th.calf, t, dt);
     for (const x of T.sole) x.set(th.sole, t, dt);
     this.thrustLight.intensity = (th.main + th.sole * 0.4) * 45 * (0.85 + Math.random() * 0.3);
+
+    // Hydraulics follow the joints
+    this.root.updateMatrixWorld(true);
+    for (const x of T.main) x.updateRams();
+    for (const pst of this.pistons) pst.update();
 
     // --- footstep events ---
     const c = Math.cos(ph);

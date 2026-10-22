@@ -248,7 +248,8 @@ export function place(parent, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
 // ---------------------------------------------------------------------------
 
 export const PAINTS = [
-  { id: 'federation', name: 'Federation', armor: '#f3f1ec', second: '#2c4fae', accent: '#ffffff', trim: '#f2b632' },
+  { id: 'federation', name: 'Vanguard', armor: '#ebe8e1', second: '#3d4c66', accent: '#ffffff', trim: '#f2b632' },
+  { id: 'signal', name: 'Signal Blue', armor: '#f3f1ec', second: '#2c4fae', accent: '#ffffff', trim: '#f2b632' },
   { id: 'comet', name: 'Crimson Comet', armor: '#e88f8c', second: '#a51f2a', accent: '#8a1a20', trim: '#f2b632' },
   { id: 'ground', name: 'Ground Type', armor: '#aab48a', second: '#5a6741', accent: '#ffffff', trim: '#d8c49a' },
   { id: 'nightops', name: 'Night Ops', armor: '#5a5d66', second: '#2a2c33', accent: '#ffffff', trim: '#d8322b' },
