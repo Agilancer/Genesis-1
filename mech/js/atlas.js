@@ -1,5 +1,6 @@
 import * as THREE from './three.js';
 import { BODY_SHEET, WEAPON_SHEET } from './regions.js';
+import { PIECES } from './pieces.js';
 
 export { B, W, BODY_SHEET, WEAPON_SHEET } from './regions.js';
 
@@ -201,6 +202,70 @@ export function loft(secs) {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.computeVertexNormals();
   return g;
+}
+
+/**
+ * A plate cut to the outline of one of the armor pieces on the body sheet, with
+ * that piece's art mapped 1:1 onto its face. The plate is centered, faces +Z,
+ * and is `width` units wide; its height follows the piece's proportions.
+ */
+const _pieceCache = new Map();
+export function pieceGeo(name, width, depth = 0.06) {
+  const key = `${name}|${width}|${depth}`;
+  if (_pieceCache.has(key)) return _pieceCache.get(key);
+  const poly = PIECES[name];
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) { minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2, k = width / (maxX - minX);
+  const shape = shapeFrom(poly.map(([x, y]) => [(x - cx) * k, -(y - cy) * k]));
+  const S = BODY_SHEET;
+  const uv = (x, y) => new THREE.Vector2(((x / k) + cx) / S.w, 1 - ((-y / k) + cy) / S.h);
+  // Edges take a flat steel tone from a plain gray panel on the sheet
+  const edge = new THREE.Vector2(1018 / S.w, 1 - 1219 / S.h);
+  const b = Math.min(0.025, depth * 0.3);
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: depth - 2 * b, bevelEnabled: true, bevelThickness: b, bevelSize: b, bevelOffset: -b, bevelSegments: 1,
+    UVGenerator: {
+      generateTopUV(_g, v, a, bb, c) { return [uv(v[a * 3], v[a * 3 + 1]), uv(v[bb * 3], v[bb * 3 + 1]), uv(v[c * 3], v[c * 3 + 1])]; },
+      generateSideWallUV() { return [edge, edge, edge, edge]; },
+    },
+  });
+  g.translate(0, 0, -(depth - 2 * b) / 2);
+  g.userData.height = (maxY - minY) * k;
+  _pieceCache.set(key, g);
+  return g;
+}
+
+/**
+ * Ink outlines: an inflated back-face shell behind every opaque armor mesh,
+ * for a drawn, anime-style silhouette. Returns the outline meshes.
+ */
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x0b0d12, side: THREE.BackSide });
+export function addOutline(root, t = 0.026) {
+  const targets = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o.userData.isOutline || o.userData.noOutline) return;
+    const m = o.material;
+    if (!m || !m.isMeshStandardMaterial || m.side !== THREE.FrontSide || m.transparent) return;
+    targets.push(o);
+  });
+  const out = [];
+  const size = new THREE.Vector3(), c = new THREE.Vector3();
+  for (const m of targets) {
+    const g = m.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    g.boundingBox.getSize(size);
+    g.boundingBox.getCenter(c);
+    const o = new THREE.Mesh(g, outlineMat);
+    const sx = 1 + (2 * t) / Math.max(size.x, 0.03), sy = 1 + (2 * t) / Math.max(size.y, 0.03), sz = 1 + (2 * t) / Math.max(size.z, 0.03);
+    o.scale.set(sx, sy, sz);
+    o.position.set(c.x * (1 - sx), c.y * (1 - sy), c.z * (1 - sz));
+    o.userData.isOutline = true;
+    o.raycast = () => {};
+    m.add(o);
+    out.push(o);
+  }
+  return out;
 }
 
 /** Box with chamfered vertical edges and beveled front/back edges. */

@@ -79,11 +79,20 @@ The thrusters are built to read as real hardware:
 - **Heel verniers:** set into a notch at the back of each foot.
 - **Exhaust:** a camera-facing plume with shock diamonds, a turbulent inner shell and an exit glow. A light and a ground glow wash the area under the suit during a climb.
 
+Armor plates are cut straight from the body sheet: `js/pieces.js` holds the
+outlines of the sheet's panels, traced in sheet pixels. `pieceGeo()` in
+`js/atlas.js` extrudes a plate to that outline and maps the panel's art onto
+its face, so the E-07 hatch, R-07 forearm plate, shin plates, hazard pads and
+DANGER intake panel all keep their painted shapes on the model. An inverted-hull
+pass (`addOutline()`) draws ink outlines for the anime look; it can be turned off
+in the hangar settings.
+
 ## Code map
 
 | File | What it does |
 | --- | --- |
 | `js/regions.js` | Pixel rectangles of the panels used from each texture sheet |
+| `js/pieces.js` | Traced outlines of the cut-out armor pieces on the body sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, procedural walk/dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |

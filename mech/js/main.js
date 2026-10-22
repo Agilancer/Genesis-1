@@ -40,7 +40,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 5000);
 
-const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch }, store.get('fs07.settings', {}));
+const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('fs07.settings', {}));
 
 function applySettings() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.hires ? 2 : 1.25));
@@ -49,6 +49,8 @@ function applySettings() {
   if (world) world.sun.castShadow = settings.shadows;
   scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined) o.material.needsUpdate = true; });
   sound.setEnabled(settings.sound);
+  if (weapons) weapons.outlines = settings.outlines;
+  scene.traverse((o) => { if (o.userData.isOutline) o.visible = settings.outlines; });
   store.set('fs07.settings', settings);
 }
 
