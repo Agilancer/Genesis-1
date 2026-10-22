@@ -115,7 +115,7 @@ export class HUD {
       el.style.display = '';
       el.style.left = `${(_v.x * 0.5 + 0.5) * W}px`;
       el.style.top = `${(-_v.y * 0.5 + 0.5) * H}px`;
-      const dist = Math.round(l.target.pos.distanceTo(d.camera.position) * 2.4);
+      const dist = Math.round(l.target.pos.distanceTo(d.camera.position) * d.meters);
       el.firstChild.textContent = `${dist}m`;
     }
     for (const [l, el] of this.lockEls) {
@@ -134,7 +134,7 @@ export class HUD {
         e.arrow.hidden = true;
         e.hard.style.left = `${(x * 0.5 + 0.5) * W}px`;
         e.hard.style.top = `${(-y * 0.5 + 0.5) * H}px`;
-        const dist = Math.round(d.hard.pos.distanceTo(d.camera.position) * 2.4);
+        const dist = Math.round(d.hard.pos.distanceTo(d.camera.position) * d.meters);
         this.set('hardInfo', e.hardInfo, `LOCK ${dist}m`);
         e.hardHp.style.width = `${Math.max(0, d.hard.hp / d.hard.maxHp) * 100}%`;
       } else {

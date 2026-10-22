@@ -1,6 +1,7 @@
 import * as THREE from './three.js';
 import { BODY_SHEET, WEAPON_SHEET } from './regions.js';
 import { PIECES } from './pieces.js';
+import { ATLASES } from './cityTiles.js';
 
 export { B, W, BODY_SHEET, WEAPON_SHEET } from './regions.js';
 
@@ -12,19 +13,23 @@ export async function loadTextures(renderer, onProgress) {
   const manager = new THREE.LoadingManager();
   manager.onProgress = (_url, loaded, total) => onProgress && onProgress(loaded / total);
   const loader = new THREE.TextureLoader(manager);
-  const [body, weapons] = await Promise.all([
+  const cityKeys = Object.keys(ATLASES);
+  const [body, weapons, ...cityList] = await Promise.all([
     loader.loadAsync('textures/body.jpg'),
     loader.loadAsync('textures/weapons.jpg'),
+    ...cityKeys.map((k) => loader.loadAsync(ATLASES[k].url)),
   ]);
   const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-  for (const t of [body, weapons]) {
+  for (const t of [body, weapons, ...cityList]) {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = aniso;
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
   }
   body.userData.sheet = BODY_SHEET;
   weapons.userData.sheet = WEAPON_SHEET;
-  return { body, weapons };
+  const city = {};
+  cityKeys.forEach((k, i) => { city[k] = cityList[i]; });
+  return { body, weapons, city };
 }
 
 // ---------------------------------------------------------------------------

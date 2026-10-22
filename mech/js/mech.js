@@ -1131,6 +1131,9 @@ export class Mech {
     return { height, step, soft: !this.walking };
   }
 
+  /** Forget planted footholds, e.g. after the mech is moved */
+  resetFeet() { this.feet = null; }
+
   footWorld(i, out) {
     return this.legs[i].ankle.getWorldPosition(out);
   }

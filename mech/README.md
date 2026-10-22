@@ -1,6 +1,6 @@
 # FS-07A Vanguard: mobile suit tech demo
 
-A three.js prototype of a Gundam/Robotech-style mech on a desert test range. The
+A three.js prototype of an Armored Core-style mech loose in Lower Manhattan. The
 mech walks, boost-dashes, jump-jets, and fires beam rifles, cannons and full
 missile salvos. Everything is procedural geometry textured from the two sheets
 in `textures/`. There is no build step.
@@ -62,6 +62,37 @@ Weapons, from the weapon sheet:
 - **μMP-24 Micro Missile Pod**: 24 swarming micro missiles (shoulder or leg)
 - **RX-S Shield**: left forearm, raised with the left trigger
 
+## The city
+
+A 10 x 10 grid of blocks modeled on downtown Manhattan, built entirely from the
+city texture sheets. The mech stands 40 ft (12.2 m) tall: at startup `main.js`
+measures the top of its head in the idle stance and sets the world scale from
+that (about 1.71 m per game unit), and the city is laid out in real meters.
+
+- **Street grid:** 100 ft avenues with four one-way lanes and 60 ft cross streets, on long east-west blocks.
+  - Crosswalks, stop bars, lane arrows, "don't block the box" junctions and manholes are keyed out of the asphalt sheets.
+  - Sidewalks are raised with granite curbs and rounded corners.
+- **Buildings:** several kinds, mixed by how close a block is to one of two tall clusters:
+  - Walk-ups with storefronts, cornices and rooftop water towers.
+  - Prewar mid-rises with setbacks.
+  - Glass office slabs and towers with mechanical penthouses.
+  - Art deco "wedding cake" towers with copper pyramid crowns.
+  - A Woolworth-style gothic tower and a One WTC-style tapered landmark.
+  - Party walls are brick, but buildings taller than their neighbors get windows on every side.
+- **Open spaces:** a starting plaza with a red cube and planters, a park with a fountain, and a small green.
+- **Waterfront:** an esplanade with railings on three sides. North of the playable area the city carries on past a barricade.
+- **Street life:** streetlights, traffic signals, subway entrances, street trees, steam stacks and vents, and parked cars (many of them cabs).
+  - Walking over a car crushes it. Shooting or blasting one makes it explode, sets off nearby cars, and leaves a burning wreck.
+- **Scenery:** Jersey City and Brooklyn skylines across the rivers, a suspension bridge, a midtown skyline with a spired tower to the north, and the Statue of Liberty in the harbor.
+- **Targets:** drones patrol the streets and avenues; target boards stand on plazas, sidewalks and rooftops.
+
+All city surfaces sample three texture atlases (`textures/city-facade.jpg`,
+`city-surface.jpg`, `city-ground.jpg`) through a shader that tiles inside one atlas
+cell with `textureGrad`, so the whole city is merged into a few dozen meshes.
+`tools/build_city_atlas.py` rebuilds the atlases and `js/cityTiles.js` from the
+source sheets in `textures/city-src/`. Collision uses a spatial grid, and rays walk
+it with a 2D DDA.
+
 ## Design notes
 
 The suit follows Armored Core's style:
@@ -109,11 +140,14 @@ in the hangar settings.
 | `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, IK foot-planting gait, dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
-| `js/world.js` | Sky, ground, props, colliders, raycasts, target drones and boards |
+| `js/city.js` | Lower Manhattan: street grid, buildings, roofs, parks, street furniture, cars, waterfront, distant scenery |
+| `js/cityTiles.js` | Generated: atlas layouts and tile positions for the city |
+| `js/world.js` | Sky, lights, spatial collision grid, raycasts, target drones and boards |
 | `js/audio.js` | Synthesized Web Audio sound effects |
 | `js/input.js` | Keyboard, pointer lock and touch controls |
 | `js/ui.js` | HUD and hangar menu |
-| `js/main.js` | Renderer, player physics, camera, game loop |
+| `js/main.js` | Renderer, world scale, player physics, camera, game loop |
+| `tools/build_city_atlas.py` | Packs the city texture sheets into atlases |
 
 The atlas mapping in `atlas.js` (`mapUV`) assigns each triangle to one of six
 directions by its normal and maps it into the region chosen for that direction,

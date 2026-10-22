@@ -15,8 +15,10 @@ const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-ra
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Math.exp(-rate * dt));
 
-// One world unit ≈ 2.4 m: the 7.5-unit mech reads as an 18 m suit.
-const METERS = 2.4;
+// The world is scaled around the mech: METERS (meters per game unit) is set at
+// startup from the mech's measured height so that it stands 40 ft tall.
+const MECH_HEIGHT_M = 40 * 0.3048;
+let METERS = 1.7;
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (_) { return d; } },
@@ -38,7 +40,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 5000);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.6, 9000);
 
 const settings = Object.assign({ sound: true, shadows: !isTouch, invert: false, sens: 1, hires: !isTouch, outlines: true }, store.get('fs07.settings', {}));
 
@@ -71,8 +73,8 @@ function buildEnvironment() {
     vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `uniform vec3 uSun; varying vec3 vD;
       void main(){ vec3 d = normalize(vD); float h = d.y;
-        vec3 sky = mix(vec3(0.92,0.84,0.7), vec3(0.25,0.45,0.8), pow(max(h,0.0),0.6));
-        vec3 gnd = vec3(0.45,0.38,0.3);
+        vec3 sky = mix(vec3(0.85,0.87,0.88), vec3(0.28,0.46,0.75), pow(max(h,0.0),0.6));
+        vec3 gnd = vec3(0.36,0.37,0.38);
         vec3 c = h > 0.0 ? sky : mix(sky, gnd, smoothstep(0.0,-0.2,h));
         c += vec3(1.0,0.9,0.75) * pow(max(dot(d,uSun),0.0), 64.0) * 6.0;
         gl_FragColor = vec4(c,1.0); }`,
@@ -124,6 +126,25 @@ function shake(pos, amount) {
   cam.shake = Math.min(1.2, cam.shake + amount / (1 + d / 40));
 }
 
+/** Height of the top of the mech's head in its idle stance, in game units */
+function measureMech() {
+  const st = {
+    gait: 0, air: 0, dash: 0, crouch: 0, vel: new V3(), bodyYaw: 0, ground: 0, legYaw: 0, aimYaw: 0, aimPitch: 0,
+    aim: [0, 0], recoil: [0, 0], reload: [false, false], shield: false, hasShield: false,
+    thrust: { main: 0, vern: 0, calf: 0, sole: 0 }, time: 0,
+  };
+  for (let i = 0; i < 90; i++) mech.animate(1 / 30, st);
+  mech.root.updateMatrixWorld(true);
+  let top = 0;
+  const v = new V3();
+  mech.head.traverse((o) => {
+    if (!o.isMesh || o.userData.isOutline) return;
+    const p = o.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) top = Math.max(top, v.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).y);
+  });
+  return top - mech.root.position.y;
+}
+
 async function init() {
   resize();
   const tex = await loadTextures(renderer, (p) => { $('#load-bar').style.width = `${Math.round(p * 100)}%`; });
@@ -135,11 +156,21 @@ async function init() {
   applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
   fx = new FX(scene, { onShake: shake, sound });
   hud = new HUD();
-  world = new World(scene, mats, fx, sound, {
+  mech = new Mech(mats, fx.glowTex);
+  METERS = MECH_HEIGHT_M / measureMech();
+  $('#load-msg').textContent = 'Building Lower Manhattan…';
+  await new Promise((r) => setTimeout(r, 30));
+  world = new World(scene, mats, fx, sound, { M: 1 / METERS, cityTex: tex.city }, {
     onHit: () => hud.hit(false),
     onKill: () => { hud.hit(true); hud.addKill(); },
   });
-  mech = new Mech(mats, fx.glowTex);
+  P.pos.copy(world.spawn);
+  mech.root.position.copy(P.pos);
+  mech.resetFeet();
+  if (world.city.landmark) {
+    P.yaw = P.bodyYaw = Math.atan2(world.city.landmark.x - P.pos.x, world.city.landmark.z - P.pos.z);
+  }
+  cam.orbit = P.bodyYaw + 0.5;
   washMat.map = fx.glowTex;
   wash = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), washMat);
   wash.rotation.x = -Math.PI / 2;
@@ -303,8 +334,13 @@ function updatePlayer(dt, c) {
   if (P.dashing) P.boost -= 26 * dt;
 
   // Integrate
+  const px = P.pos.x, pz = P.pos.z;
   P.pos.addScaledVector(P.vel, dt);
-  world.resolve(P.pos, 1.5, 7);
+  // Blocked by a wall: keep only the motion that actually happened (slide along it)
+  if (world.resolve(P.pos, 1.5, 7) && dt > 0) {
+    P.vel.x = (P.pos.x - px) / dt;
+    P.vel.z = (P.pos.z - pz) / dt;
+  }
   const ground = world.groundHeight(P.pos.x, P.pos.z, P.pos.y, 0.9);
   if (P.pos.y <= ground) {
     if (!P.grounded) {
@@ -469,7 +505,10 @@ function updateCamera(dt, speed) {
   if (mode === 'play' && !cam.debugOrbit) {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
-    const side = 4.4;
+    // Shoulder offset, pulled in when a wall is close on that side
+    let side = 4.4;
+    const sideHit = world.raycast(pivot, camRight, side + 1.2, { targets: false });
+    if (sideHit) side = Math.max(0, sideHit.dist - 1.2);
     const origin = _t.copy(pivot).addScaledVector(camRight, side);
     // Pull in when something blocks the view
     const back = _t2.copy(camDir).negate();
@@ -501,6 +540,12 @@ function updateCamera(dt, speed) {
     camDir.subVectors(look, camPos).normalize();
     cam.fov = damp(cam.fov, 50, 3, dt);
   }
+  if (cam.free) {
+    // Debug/screenshot camera: { pos: [x, y, z], look: [x, y, z], fov }
+    camera.position.set(...cam.free.pos);
+    camera.lookAt(_t.set(...cam.free.look));
+    cam.fov = cam.free.fov || cam.fov;
+  }
   camera.fov = cam.fov;
   camera.updateProjectionMatrix();
 
@@ -531,6 +576,7 @@ function updateCamera(dt, speed) {
 // ---------------------------------------------------------------------------
 
 let last = performance.now();
+const feetA = new V3(), feetB = new V3();
 const shoulder = new V3();
 
 function frame(now) {
@@ -582,7 +628,7 @@ function frame(now) {
     shake(null, (0.16 + gait * 0.12) * k);
   }
 
-  world.update(dt, P.pos);
+  world.update(dt, P.pos, { grounded: P.grounded, feet: [mech.footWorld(0, feetA), mech.footWorld(1, feetB)] });
   fx.update(dt);
 
   if (mode === 'play' || mode === 'hangar') {
@@ -590,11 +636,11 @@ function frame(now) {
       boost: P.boost, overheat: P.overheat,
       speed: speed * METERS * 3.6, alt: (P.pos.y) * METERS,
       locks: weapons.lock.locks, missiles: weapons.missilesLoaded, missileCap: weapons.missileCapacity,
-      weapons: weapons.status(), camera, hard: hard.target,
+      weapons: weapons.status(), camera, hard: hard.target, meters: METERS,
     });
   }
 
-  renderer.render(scene, camera);
+  if (!(window.__mech && window.__mech.skipRender)) renderer.render(scene, camera);
 }
 
 init().catch((err) => {
@@ -606,5 +652,5 @@ init().catch((err) => {
 window.__mech = {
   P, cam, input, startPlay, openHangar,
   applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
-  get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
+  renderer, get METERS() { return METERS; }, get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
 };

@@ -157,6 +157,11 @@ export class Sound {
     this.noiseHit({ type: 'lowpass', freq: 500, freqEnd: 90, peak: 0.35 * heavy, decay: 0.3, pos });
     this.tone({ type: 'square', freq: 210, freqEnd: 160, peak: 0.035 * heavy, decay: 0.08, pos, delay: 0.03 });
   }
+  crunch(pos) {
+    this.noiseHit({ type: 'lowpass', freq: 1800, freqEnd: 300, peak: 0.55, decay: 0.35, pos });
+    this.noiseHit({ type: 'bandpass', freq: 3200, q: 2, peak: 0.25, decay: 0.18, pos });
+    this.tone({ type: 'square', freq: 180, freqEnd: 60, peak: 0.12, decay: 0.2, pos });
+  }
   servo(pos) {
     this.tone({ type: 'sawtooth', freq: 260, freqEnd: 420, peak: 0.035, attack: 0.03, decay: 0.25, pos });
   }

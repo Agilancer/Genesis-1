@@ -319,7 +319,10 @@ export class FX {
 
   explosion(pos, scale = 1, opts = {}) {
     const s = scale;
-    const ground = pos.y < 1.5 * s;
+    // Explosions on any upward-facing surface (street, sidewalk, rooftop) leave a ring and a scorch
+    const flatHit = opts.normal && opts.normal.y > 0.9;
+    const ground = flatHit || pos.y < 1.5 * s;
+    opts.groundY = flatHit ? pos.y : (opts.groundY ?? 0);
     this.flash(pos, 14 * s, 0xffe6c0, 0.18);
     this.light(pos, 0xff9a40, 120 * s, 0.45, 60 * s);
     // Fireball
@@ -350,8 +353,9 @@ export class FX {
     this.sparksBurst(pos, UP, Math.round(30 * s) + 8, 0xffb060, 45 * Math.sqrt(s));
     // Shockwave
     if (ground) {
-      this.ring(_v.set(pos.x, 0.15, pos.z), 18 * s, 0.55, UP);
-      this.scorch(pos.x, pos.z, rand(6, 9) * s);
+      const gy = opts.groundY ?? 0;
+      this.ring(_v.set(pos.x, gy + 0.15, pos.z), 18 * s, 0.55, UP);
+      this.scorch(pos.x, pos.z, rand(6, 9) * s, gy + 0.03);
       this.dust(pos, 1.6 * s, 14);
     } else {
       this.ring(pos, 14 * s, 0.45, _v.copy(opts.normal || UP));
@@ -364,7 +368,7 @@ export class FX {
       const a = (i / n) * Math.PI * 2 + rand(-0.3, 0.3);
       const sp = rand(5, 11) * scale;
       const g = rand(0.42, 0.52);
-      this.smoke.emit(pos.x + Math.cos(a) * 0.6, 0.4, pos.z + Math.sin(a) * 0.6,
+      this.smoke.emit(pos.x + Math.cos(a) * 0.6, pos.y + 0.4, pos.z + Math.sin(a) * 0.6,
         Math.cos(a) * sp, rand(0.5, 2), Math.sin(a) * sp, rand(1.2, 2.2), 1.2 * scale, 4.5 * scale,
         g, g * 0.94, g * 0.86, 0.55, g, g * 0.95, g * 0.88, 0, 2.6, 0.3, rand(-1, 1));
     }

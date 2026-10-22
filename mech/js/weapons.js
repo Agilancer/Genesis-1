@@ -639,7 +639,7 @@ export class WeaponSystem {
       if (Math.random() < 0.5) this.fx.smoke.emit(p.x, p.y, p.z, rand(-2, 2), rand(3, 7), rand(-2, 2), rand(2, 3.5), 2, 9, 0.25, 0.24, 0.22, 0.6, 0.45, 0.45, 0.45, 0, 0.8, 0.5);
       if (Math.random() < 0.4) this.fx.sparksBurst(p, hit.normal, 4, 0xffc070, 40);
       if (hit.target) this.world.damage(hit.target, def.dps * dt, p);
-      if (hit.normal.y > 0.9 && p.y < 0.5 && Math.random() < 0.15) this.fx.scorch(p.x, p.z, rand(3, 5));
+      if (hit.normal.y > 0.9 && !hit.target && Math.random() < 0.15) this.fx.scorch(p.x, p.z, rand(3, 5), p.y + 0.03);
       this.fx.light(p, 0xffa040, 60 * k, 0.08, 35);
     }
     this.onShake(pos, 0.08);
@@ -808,7 +808,7 @@ export class WeaponSystem {
         fx.beamHit(hit.point, hit.normal, b.def.color);
         this.sound.impact(hit.point);
         if (hit.target) W_.damage(hit.target, b.def.dmg, hit.point);
-        else if (hit.normal.y > 0.9 && hit.point.y < 0.5) fx.scorch(hit.point.x, hit.point.z, 2.2);
+        else if (hit.normal.y > 0.9) fx.scorch(hit.point.x, hit.point.z, 2.2, hit.point.y + 0.03);
       } else b.pos.addScaledVector(b.dir, step);
       if (done) {
         this.scene.remove(b.obj);
