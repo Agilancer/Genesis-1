@@ -6,6 +6,8 @@ fill the goal ring to clear the stage.
 
 No frameworks, no build step. It's plain HTML, CSS, and JavaScript on a `<canvas>`.
 
+The repo also holds [`mech/`](mech/), a three.js mobile suit tech demo. See [mech/README.md](mech/README.md).
+
 ## How to play
 
 - **Drag anywhere** to steer. Movement is relative, so your finger never covers your star.

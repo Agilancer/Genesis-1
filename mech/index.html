@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>FS-07A Vanguard</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Mobile suit tech demo built with three.js: walk, dash, jump-jet, and fire beams and missile salvos.">
+<meta name="theme-color" content="#0d0f12">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="loading">
+  <div class="load-box">
+    <div class="eyebrow">MS TEST SITE 07</div>
+    <div class="load-title">Booting FS-07A</div>
+    <div class="bar"><i id="load-bar"></i></div>
+    <div id="load-msg" class="mono">Loading armor textures…</div>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div class="hud-top">
+    <div class="unit">
+      <span class="unit-code">FS-07A</span>
+      <span class="unit-name">VANGUARD</span>
+    </div>
+    <div class="score"><span class="label">TARGETS DOWN</span><b id="score" class="mono">0</b></div>
+    <button id="btn-hangar" class="chip-btn" type="button">Hangar <kbd>Tab</kbd></button>
+  </div>
+
+  <div id="reticle">
+    <div id="lock-zone"></div>
+    <div class="cross"><i></i><i></i><i></i><i></i></div>
+    <div id="hitmark"></div>
+  </div>
+  <div id="locks"></div>
+
+  <div class="hud-left">
+    <div class="gauge">
+      <div class="gauge-head"><span class="label">BOOST</span><span id="boost-txt" class="mono">100</span></div>
+      <div class="gauge-bar"><i id="boost-bar"></i></div>
+      <div id="overheat">OVERHEAT</div>
+    </div>
+    <div class="readouts mono">
+      <div><span class="label">SPD</span><b id="spd">0</b><small>km/h</small></div>
+      <div><span class="label">ALT</span><b id="alt">0</b><small>m</small></div>
+      <div><span class="label">LOCK</span><b id="lockct">0</b><small id="mslct">/0 MSL</small></div>
+    </div>
+  </div>
+
+  <div class="hud-right" id="weapons"></div>
+  <div id="toast"></div>
+  <div id="help-hint" class="mono">WASD move · Mouse aim · LMB/RMB fire · F cannon · Q missile · E salvo · Space jump · Shift dash</div>
+</div>
+
+<div id="touch" hidden>
+  <div id="move-zone"></div>
+  <div id="look-zone"></div>
+  <div id="stick"><div id="stick-knob"></div></div>
+  <div class="tbtns">
+    <button id="t-fire" class="tb big" type="button">FIRE<small>R hand</small></button>
+    <button id="t-fireL" class="tb" type="button">L<small>hand</small></button>
+    <button id="t-cannon" class="tb" type="button">CNN<small>shldr</small></button>
+    <button id="t-msl" class="tb" type="button">MSL<small>single</small></button>
+    <button id="t-salvo" class="tb alert" type="button">SALVO<small>all pods</small></button>
+    <button id="t-jump" class="tb" type="button">JUMP<small>hold</small></button>
+    <button id="t-dash" class="tb" type="button">DASH<small>hold</small></button>
+    <button id="t-reload" class="tb small" type="button">RLD</button>
+  </div>
+  <button id="t-menu" class="chip-btn t-menu" type="button">Hangar</button>
+</div>
+
+<section id="intro" hidden>
+  <div class="intro-card">
+    <div class="stripe"></div>
+    <div class="eyebrow">MS TEST SITE 07 · WEAPONS TRIAL</div>
+    <h1>FS-07A <span>Vanguard</span></h1>
+    <p class="lede">Take the prototype out on the range. Knock down drones and target boards with beams, cannons and missile salvos.</p>
+    <div class="controls">
+      <div class="ctl-group">
+        <h3>Move</h3>
+        <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</p>
+        <p><kbd>Shift</kbd> boost dash</p>
+        <p><kbd>Space</kbd> jump, hold to jet</p>
+        <p><kbd>Mouse</kbd> aim · <kbd>Wheel</kbd> zoom</p>
+      </div>
+      <div class="ctl-group">
+        <h3>Fire</h3>
+        <p><kbd>LMB</kbd> right-hand weapon</p>
+        <p><kbd>RMB</kbd> left hand / raise shield</p>
+        <p><kbd>F</kbd> shoulder cannons</p>
+        <p><kbd>Q</kbd> single missile · <kbd>E</kbd> full salvo</p>
+        <p><kbd>R</kbd> reload · <kbd>Tab</kbd> hangar</p>
+      </div>
+    </div>
+    <p class="touch-note">On a touchscreen: left thumb moves, drag the right side to aim, and use the buttons to fire, jump and dash.</p>
+    <div class="intro-actions">
+      <button id="btn-launch" class="btn primary" type="button">Launch</button>
+      <button id="btn-intro-hangar" class="btn" type="button">Configure loadout</button>
+    </div>
+  </div>
+</section>
+
+<aside id="hangar" hidden>
+  <header class="hangar-head">
+    <div class="stripe"></div>
+    <div class="hh-row">
+      <div>
+        <div class="eyebrow">HANGAR 2 · BAY 07</div>
+        <h2>Loadout</h2>
+      </div>
+      <button id="btn-close-hangar" class="btn primary" type="button">Launch</button>
+    </div>
+  </header>
+  <div class="hangar-body" id="hangar-body"></div>
+</aside>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
