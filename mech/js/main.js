@@ -15,7 +15,7 @@ const damp = (cur, target, rate, dt) => cur + (target - cur) * (1 - Math.exp(-ra
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 const dampAngle = (cur, target, rate, dt) => cur + wrap(target - cur) * (1 - Math.exp(-rate * dt));
 
-// One world unit ≈ 2.4 m: the 6-unit mech reads as a 14 m suit.
+// One world unit ≈ 2.4 m: the 7.5-unit mech reads as an 18 m suit.
 const METERS = 2.4;
 
 const store = {
@@ -95,7 +95,9 @@ input.touchMode = isTouch;
 let world, fx, mech, weapons, hud, hangar, mats;
 
 const DEFAULT = PRESETS[0];
-const loadout = store.get('fs07.loadout', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
+// Bumped storage key: loadouts saved for the earlier frame start fresh on this one.
+const loadout = store.get('fs07.loadout.ac', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
+if (!PAINTS.some((p) => p.id === loadout.paint)) loadout.paint = PAINTS[0].id;
 
 // Additive glow on the ground under the thrusters
 const washMat = new THREE.MeshBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
@@ -113,7 +115,7 @@ const P = {
   dashing: false, ascending: false,
   thrust: { main: 0, vern: 0, calf: 0, sole: 0 },
 };
-const cam = { dist: 14, shake: 0, fov: 60, pivotY: 6, orbit: 0, orbitR: 12.5, orbitSpeed: 0.18, lookY: 3.5 };
+const cam = { dist: 16, shake: 0, fov: 60, pivotY: 7, orbit: 0, orbitR: 15, orbitSpeed: 0.18, lookY: 4.6, orbitY: 5.6 };
 let mode = 'loading'; // loading | intro | play | hangar
 let time = 0;
 
@@ -154,7 +156,7 @@ async function init() {
     onChange: () => {
       applyPaint(mats, PAINTS.find((p) => p.id === loadout.paint) || PAINTS[0]);
       weapons.equip(loadout);
-      store.set('fs07.loadout', loadout);
+      store.set('fs07.loadout.ac', loadout);
     },
     onSettings: applySettings,
   });
@@ -225,7 +227,7 @@ function updatePlayer(dt, c) {
   P.pitch = clamp(P.pitch - c.lookY * sens * (settings.invert ? -1 : 1), -0.7, 1.0);
   // Lock-on steers the camera so the target stays in view; the mouse still adds on top
   if (playing && hard.target) {
-    _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 5, P.pos.z));
+    _t.subVectors(hard.target.pos, _t2.set(P.pos.x, P.pos.y + 6.2, P.pos.z));
     const ty = Math.atan2(_t.x, _t.z);
     const tp = clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)) + 0.04, -0.7, 1.0);
     P.yaw = dampAngle(P.yaw, ty, 3.5, dt);
@@ -348,7 +350,7 @@ function updatePlayer(dt, c) {
   } else P.legYaw *= 0.9;
   const walking = P.grounded && !P.dashing && P.landT <= 0;
   const gait = walking ? clamp(speed / 10, 0, 1) : 0;
-  const stride = Math.max(1.3, 2.8 * Math.max(gait, 0.45));
+  const stride = Math.max(1.6, 3.6 * Math.max(gait, 0.45));
   if (walking) P.phase += P.gaitDir * dt * speed * Math.PI / stride;
 
   // Thrusters
@@ -464,12 +466,12 @@ function leadPoint(out) {
 const camDir = new V3(), camRight = new V3(), pivot = new V3(), camPos = new V3();
 
 function updateCamera(dt, speed) {
-  cam.pivotY = damp(cam.pivotY, P.pos.y + 6.2, 10, dt);
+  cam.pivotY = damp(cam.pivotY, P.pos.y + 7.4, 10, dt);
   pivot.set(P.pos.x, cam.pivotY, P.pos.z);
   if (mode === 'play') {
     camDir.set(Math.sin(P.yaw) * Math.cos(P.pitch), Math.sin(P.pitch), Math.cos(P.yaw) * Math.cos(P.pitch));
     camRight.set(-Math.cos(P.yaw), 0, Math.sin(P.yaw));
-    const side = 4.0;
+    const side = 4.4;
     const origin = _t.copy(pivot).addScaledVector(camRight, side);
     // Pull in when something blocks the view
     const back = _t2.copy(camDir).negate();
@@ -486,7 +488,7 @@ function updateCamera(dt, speed) {
     // Showroom orbit for the intro and hangar
     cam.orbit += dt * cam.orbitSpeed;
     const r = cam.orbitR;
-    camPos.set(P.pos.x + Math.sin(cam.orbit) * r, P.pos.y + 4.6, P.pos.z + Math.cos(cam.orbit) * r);
+    camPos.set(P.pos.x + Math.sin(cam.orbit) * r, P.pos.y + cam.orbitY, P.pos.z + Math.cos(cam.orbit) * r);
     camera.position.copy(camPos);
     const look = _t.set(P.pos.x, P.pos.y + cam.lookY, P.pos.z);
     // Shift the mech left of center while a side panel covers the right
@@ -549,7 +551,7 @@ function frame(now) {
   updateCamera(dt, speed);
 
   // Aim angles from the shoulders toward the aim point
-  shoulder.set(P.pos.x, P.pos.y + 4.9, P.pos.z);
+  shoulder.set(P.pos.x, P.pos.y + 6.2, P.pos.z);
   _t.subVectors(aim.point, shoulder);
   const aimYawWorld = Math.atan2(_t.x, _t.z);
   const aimPitch = mode === 'play' ? clamp(Math.atan2(_t.y, Math.hypot(_t.x, _t.z)), -0.8, 1.0) : 0;
@@ -602,5 +604,6 @@ init().catch((err) => {
 // Debug/test hook
 window.__mech = {
   P, cam, input, startPlay, openHangar,
+  applyPaintById: (id) => applyPaint(mats, PAINTS.find((p) => p.id === id) || PAINTS[0]),
   get time() { return time; }, get weapons() { return weapons; }, get world() { return world; }, get mech() { return mech; }, get mode() { return mode; },
 };

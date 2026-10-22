@@ -313,13 +313,12 @@ export function place(parent, m, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) {
 // ---------------------------------------------------------------------------
 
 export const PAINTS = [
-  { id: 'federation', name: 'Vanguard', armor: '#ebe8e1', second: '#3d4c66', accent: '#ffffff', trim: '#f2b632' },
-  { id: 'signal', name: 'Signal Blue', armor: '#f3f1ec', second: '#2c4fae', accent: '#ffffff', trim: '#f2b632' },
-  { id: 'comet', name: 'Crimson Comet', armor: '#e88f8c', second: '#a51f2a', accent: '#8a1a20', trim: '#f2b632' },
-  { id: 'ground', name: 'Ground Type', armor: '#aab48a', second: '#5a6741', accent: '#ffffff', trim: '#d8c49a' },
-  { id: 'nightops', name: 'Night Ops', armor: '#5a5d66', second: '#2a2c33', accent: '#ffffff', trim: '#d8322b' },
-  { id: 'desert', name: 'Desert Storm', armor: '#dccaa0', second: '#94784c', accent: '#ffffff', trim: '#5b4a33' },
-  { id: 'arctic', name: 'Arctic', armor: '#ffffff', second: '#e7822e', accent: '#ffb27a', trim: '#2b2d33' },
+  { id: 'lynx', name: 'Lynx Navy', armor: '#3f5888', second: '#463e37', frame: '#6a645c', trim: '#d39a45', eye: '#8ff0ff' },
+  { id: 'unsung', name: 'Unsung Black', armor: '#454c5c', second: '#2a2c32', frame: '#55585f', trim: '#c08455', eye: '#ff4a3a' },
+  { id: 'steel', name: 'Shrieker Steel', armor: '#a4a9b0', second: '#4a4d54', frame: '#62666d', trim: '#e2e4e8', eye: '#ffd27a' },
+  { id: 'glint', name: 'Glint White', armor: '#f2f3f5', second: '#5a6680', frame: '#7d8594', trim: '#4fa8ff', eye: '#7fd8ff' },
+  { id: 'desert', name: 'Desert Ops', armor: '#c2ad85', second: '#51473b', frame: '#6a6156', trim: '#e2782c', eye: '#9dff8a' },
+  { id: 'crimson', name: 'Crimson', armor: '#9a3633', second: '#322d2c', frame: '#56504c', trim: '#d39a45', eye: '#ffe08a' },
 ];
 
 export const SKINS = [
@@ -331,6 +330,7 @@ export const SKINS = [
   { id: 'crimson', name: 'Crimson', tint: '#c73b35', stripe: '#1c1c1c' },
   { id: 'hazard', name: 'Hazard', tint: '#3c3d42', stripe: '#f2b632' },
   { id: 'arctic', name: 'Arctic Orange', tint: '#f6f6f6', stripe: '#ee7a22' },
+  { id: 'bronze', name: 'Bronze', tint: '#b4823f', stripe: '#1f1f22' },
 ];
 
 export function makeMaterials(tex) {
@@ -343,7 +343,7 @@ export function makeMaterials(tex) {
     vent: std({ map: body, bumpMap: body, bumpScale: 3, roughness: 0.45, metalness: 0.35 }),
     frame: std({ map: body, bumpMap: body, bumpScale: 3, roughness: 0.42, metalness: 0.6, color: 0xb4b8c0 }),
     joint: std({ color: 0x2a2d33, roughness: 0.38, metalness: 0.8 }),
-    trim: std({ color: 0xf2b632, roughness: 0.38, metalness: 0.35 }),
+    trim: std({ color: 0xd39a45, roughness: 0.32, metalness: 0.75 }),
     red: std({ color: 0xc8262a, roughness: 0.45, metalness: 0.2 }),
     nozzle: std({ color: 0x55575c, roughness: 0.3, metalness: 0.9 }),
     eye: new THREE.MeshBasicMaterial({ color: 0x7dffb6, toneMapped: false }),
@@ -372,9 +372,11 @@ export function makeMaterials(tex) {
 export function applyPaint(mats, paint) {
   mats.armor.color.set(paint.armor);
   mats.second.color.set(paint.second);
-  mats.accent.color.set(paint.accent);
+  mats.accent.color.set(paint.armor);
+  mats.frame.color.set(paint.frame);
   mats.vent.color.set(paint.trim);
   mats.trim.color.set(paint.trim);
+  mats.eye.color.set(paint.eye);
 }
 
 // ---------------------------------------------------------------------------

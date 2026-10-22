@@ -64,10 +64,13 @@ Weapons, from the weapon sheet:
 
 ## Design notes
 
-The suit follows RX-78-2 conventions:
-- **Proportions:** small head, wide shoulders, short upper arms, long forearms, short thighs, tall shins and big feet.
-- **Colors and details:** blue chest with yellow intake vents, red abdomen block, red and yellow crotch "V", V-fin and faceplate with vent slits.
-- **Backpack:** carries two beam sabers.
+The suit follows Armored Core's style:
+- **Silhouette:** tall, hunched frame, narrow waist, long arms with heavy forearms.
+- **Armor:** sharp, faceted plates that sweep backward.
+- **Head:** a low arrowhead sensor head with a V visor, sitting between raised collar plates.
+- **Legs:** blade knees, thin shins and talon feet with heel spurs.
+- **Back:** a booster pack with swept stabilizer fins. Missile pods and cannons mount on top of it.
+- **Paint:** dark armor over a gold-trimmed frame. The default is Lynx Navy; Unsung Black, Shrieker Steel, Glint White, Desert Ops and Crimson are in the hangar.
 
 The thrusters are built to read as real hardware:
 

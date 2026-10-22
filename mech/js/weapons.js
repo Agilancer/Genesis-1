@@ -46,11 +46,11 @@ export function allowedFor(slot) {
 }
 
 export const PRESETS = [
-  { name: 'Vanguard', paint: 'federation', slots: { rightHand: ['beamRifle', 'white'], leftHand: ['shield', 'white'], shoulderL: ['missilePod', 'white'], shoulderR: ['microPod', 'white'], legL: ['missilePod', 'white'], legR: ['missilePod', 'white'] } },
-  { name: 'Full Armor', paint: 'ground', slots: { rightHand: ['machineGun', 'olive'], leftHand: ['shield', 'olive'], shoulderL: ['heavyPod', 'olive'], shoulderR: ['heavyPod', 'olive'], legL: ['microPod', 'olive'], legR: ['microPod', 'olive'] } },
-  { name: 'Artillery', paint: 'desert', slots: { rightHand: ['bazooka', 'desert'], leftHand: ['grenade', 'desert'], shoulderL: ['beamCannon', 'desert'], shoulderR: ['missilePod', 'desert'], legL: ['missilePod', 'desert'], legR: ['missilePod', 'desert'] } },
-  { name: 'Beam Striker', paint: 'comet', slots: { rightHand: ['beamRifle', 'crimson'], leftHand: ['beamCannon', 'crimson'], shoulderL: ['vulcanPod', 'crimson'], shoulderR: ['vulcanPod', 'crimson'], legL: [null, 'white'], legR: [null, 'white'] } },
-  { name: 'Breacher', paint: 'nightops', slots: { rightHand: ['shotgun', 'hazard'], leftHand: ['machineGun', 'hazard'], shoulderL: ['microPod', 'hazard'], shoulderR: ['microPod', 'hazard'], legL: ['missilePod', 'hazard'], legR: ['missilePod', 'hazard'] } },
+  { name: 'Vanguard', paint: 'lynx', slots: { rightHand: ['beamRifle', 'bronze'], leftHand: ['shield', 'gunmetal'], shoulderL: ['missilePod', 'gunmetal'], shoulderR: ['microPod', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'] } },
+  { name: 'Full Armor', paint: 'desert', slots: { rightHand: ['machineGun', 'olive'], leftHand: ['shield', 'olive'], shoulderL: ['heavyPod', 'olive'], shoulderR: ['heavyPod', 'olive'], legL: ['microPod', 'olive'], legR: ['microPod', 'olive'] } },
+  { name: 'Artillery', paint: 'steel', slots: { rightHand: ['bazooka', 'gunmetal'], leftHand: ['grenade', 'gunmetal'], shoulderL: ['beamCannon', 'gunmetal'], shoulderR: ['missilePod', 'gunmetal'], legL: ['missilePod', 'gunmetal'], legR: ['missilePod', 'gunmetal'] } },
+  { name: 'Beam Striker', paint: 'glint', slots: { rightHand: ['beamRifle', 'white'], leftHand: ['beamCannon', 'white'], shoulderL: ['vulcanPod', 'white'], shoulderR: ['vulcanPod', 'white'], legL: [null, 'white'], legR: [null, 'white'] } },
+  { name: 'Breacher', paint: 'unsung', slots: { rightHand: ['shotgun', 'hazard'], leftHand: ['machineGun', 'hazard'], shoulderL: ['microPod', 'hazard'], shoulderR: ['microPod', 'hazard'], legL: ['missilePod', 'hazard'], legR: ['missilePod', 'hazard'] } },
 ];
 
 // ---------------------------------------------------------------------------
@@ -218,11 +218,13 @@ function buildPod(def, m) {
 
 function buildShield(m) {
   const g = new THREE.Group();
-  const pts = [[-0.74, 1.5], [0.74, 1.5], [0.82, -0.5], [0, -1.95], [-0.82, -0.5]];
-  place(g, WP(frontPrism(pts.map(([x, y]) => [x * 1.08, y * 1.06]), 0.1, 0.03), m.stripe), 0, 0, -0.02);
+  // Angular kite shield with a raised spine and a diagonal band
+  const pts = [[-0.6, 1.5], [0.6, 1.5], [0.8, 1.06], [0.7, -0.9], [0, -1.9], [-0.7, -0.9], [-0.8, 1.06]];
+  place(g, WP(frontPrism(pts.map(([x, y]) => [x * 1.06, y * 1.04]), 0.1, 0.03), m.metal), 0, 0, -0.02);
   place(g, WP(frontPrism(pts, 0.18, 0.05), m.body, { pz: W.podWhite2, all: W.podWhite }), 0, 0, 0.06);
-  place(g, WP(chamferBox(0.14, 1.5, 0.05, 0.03), m.stripe), 0, 0.15, 0.17);
-  place(g, WP(chamferBox(0.86, 0.14, 0.05, 0.03), m.stripe), 0, 0.4, 0.17);
+  place(g, WP(frontPrism([[-0.09, 1.36], [0.09, 1.36], [0.11, -1.4], [0, -1.62], [-0.11, -1.4]], 0.08, 0.02), m.metal), 0, 0, 0.17);
+  const band = place(g, WP(chamferBox(1.3, 0.1, 0.05, 0.02), m.stripe), 0, 0.9, 0.16);
+  band.rotation.z = -0.32;
   return { group: g, muzzles: [] };
 }
 
