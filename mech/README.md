@@ -57,13 +57,30 @@ Weapons, from the weapon sheet:
 - **μMP-24 Micro Missile Pod**: 24 swarming micro missiles (shoulder or leg)
 - **RX-S Shield**: left forearm, raised with the left trigger
 
+## Design notes
+
+The suit follows RX-78-2 conventions:
+- **Proportions:** small head, wide shoulders, short upper arms, long forearms, short thighs, tall shins and big feet.
+- **Colors and details:** blue chest with yellow intake vents, red abdomen block, red and yellow crotch "V", V-fin and faceplate with vent slits.
+- **Backpack:** carries two beam sabers.
+
+The thrusters are built to read as real hardware:
+
+- **Main engines:** two bell nozzles hang from armored housings under the backpack.
+  - Each sits in a gimbal ring with hydraulic rams. The rams stretch as the bell swings back for a dash and down for a climb.
+  - The bells are heat-tinted, gold at the throat shading to blue at the lip, and glow inside when lit.
+- **Backpack verniers:** small nozzles on the pack's upper corners.
+- **Calf verniers:** each sits in a recessed bay behind a two-piece armored cover that swings open when they fire.
+- **Heel verniers:** set into a notch at the back of each foot.
+- **Exhaust:** a camera-facing plume with shock diamonds, a turbulent inner shell and an exit glow. A light and a ground glow wash the area under the suit during a climb.
+
 ## Code map
 
 | File | What it does |
 | --- | --- |
 | `js/regions.js` | Pixel rectangles of the panels used from each texture sheet |
 | `js/atlas.js` | Texture loading, box-projected atlas UVs, geometry helpers, paints and skins |
-| `js/mech.js` | Mech model, thrusters with shader flames, procedural walk/dash/jump/aim animation |
+| `js/mech.js` | Mech model, gimbaled bell-nozzle thrusters with plume shaders, procedural walk/dash/jump/aim animation |
 | `js/weapons.js` | Weapon definitions and models, projectiles, homing missiles, lock-on |
 | `js/fx.js` | Instanced billboard particles (smoke, fire, sparks), explosions, light pool, decals |
 | `js/world.js` | Sky, ground, props, colliders, raycasts, target drones and boards |

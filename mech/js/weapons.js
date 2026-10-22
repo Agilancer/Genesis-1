@@ -361,7 +361,7 @@ export class WeaponSystem {
       let mount = slot.id;
       if (wid === 'shield') mount = 'leftShield';
       if (slot.type === 'leg') model.group.scale.setScalar(0.66);
-      if (slot.type === 'shoulder' && def.kind === 'missile') model.group.scale.setScalar(0.86);
+      if (slot.type === 'shoulder' && def.kind === 'missile') model.group.scale.setScalar(0.76);
       this.mech.attach(mount, model.group);
       this.slots[slot.id] = {
         slot, def, id: wid, model, mount,

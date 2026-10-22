@@ -164,6 +164,45 @@ export function topPrism(pts, height, bevel) {
   return g;
 }
 
+/**
+ * Tapered armor block lofted along Y through octagonal sections.
+ * secs: [{ y, w, d, c?, x?, z? }] from top to bottom (any order works).
+ * Each section is a w×d rectangle with corners chamfered by c, offset by x/z.
+ */
+export function loft(secs) {
+  const ring = (s) => {
+    const hw = s.w / 2, hd = s.d / 2, c = Math.min(s.c ?? Math.min(s.w, s.d) * 0.2, hw * 0.95, hd * 0.95);
+    const x = s.x || 0, z = s.z || 0;
+    return [
+      [hw - c, hd], [hw, hd - c], [hw, -hd + c], [hw - c, -hd],
+      [-hw + c, -hd], [-hw, -hd + c], [-hw, hd - c], [-hw + c, hd],
+    ].map(([px, pz]) => new THREE.Vector3(px + x, s.y, pz + z));
+  };
+  const rings = secs.map(ring);
+  const pos = [];
+  const tri = (a, b, c) => pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  // Orient so faces point outward regardless of section order
+  const down = secs[0].y > secs[secs.length - 1].y;
+  for (let r = 0; r < rings.length - 1; r++) {
+    const A = rings[r], Bn = rings[r + 1];
+    for (let i = 0; i < 8; i++) {
+      const j = (i + 1) % 8;
+      if (down) { tri(A[i], Bn[i], Bn[j]); tri(A[i], Bn[j], A[j]); }
+      else { tri(A[i], A[j], Bn[j]); tri(A[i], Bn[j], Bn[i]); }
+    }
+  }
+  const capTop = down ? rings[0] : rings[rings.length - 1];
+  const capBot = down ? rings[rings.length - 1] : rings[0];
+  for (let i = 1; i < 7; i++) {
+    tri(capTop[0], capTop[i], capTop[i + 1]);
+    tri(capBot[0], capBot[i + 1], capBot[i]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
 /** Box with chamfered vertical edges and beveled front/back edges. */
 export function chamferBox(w, h, d, c = Math.min(w, h) * 0.18, bevel = 0.035) {
   const x = w / 2, y = h / 2;

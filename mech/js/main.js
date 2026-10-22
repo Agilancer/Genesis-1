@@ -95,6 +95,10 @@ let world, fx, mech, weapons, hud, hangar, mats;
 const DEFAULT = PRESETS[0];
 const loadout = store.get('fs07.loadout', null) || { paint: DEFAULT.paint, slots: JSON.parse(JSON.stringify(DEFAULT.slots)) };
 
+// Additive glow on the ground under the thrusters
+const washMat = new THREE.MeshBasicMaterial({ color: 0x7fb4ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+let wash;
+
 const P = {
   pos: new V3(0, 0, 0),
   vel: new V3(),
@@ -132,6 +136,11 @@ async function init() {
     onKill: () => { hud.hit(true); hud.addKill(); },
   });
   mech = new Mech(mats, fx.glowTex);
+  washMat.map = fx.glowTex;
+  wash = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), washMat);
+  wash.rotation.x = -Math.PI / 2;
+  wash.renderOrder = 2;
+  scene.add(wash);
   mech.root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   scene.add(mech.root);
   weapons = new WeaponSystem({ scene, fx, sound, world, mech, mats });
@@ -359,6 +368,13 @@ function updatePlayer(dt, c) {
       fx.dust(_t.set(P.pos.x, ground, P.pos.z), 0.7 + k, 2);
     }
   }
+  {
+    const alt = P.pos.y - ground;
+    const k = Math.max(T.main * 0.7, T.sole) * Math.max(0, 1 - alt / 12);
+    washMat.opacity = k * (0.55 + Math.random() * 0.15);
+    wash.position.set(P.pos.x, ground + 0.06, P.pos.z);
+    wash.scale.setScalar(6 + alt * 0.8);
+  }
   if (P.dashing && P.grounded && Math.random() < 0.8) {
     // Skid sparks and dust behind the feet
     for (let i = 0; i < 2; i++) {
@@ -485,7 +501,7 @@ function frame(now) {
     legYaw: P.legYaw, aimYaw, aimPitch,
     aim: [H[0].aim, H[1].aim], recoil: [H[0].recoil, H[1].recoil], reload: [H[0].reload, H[1].reload],
     shield: weapons.shieldUp, hasShield: !!(weapons.slots.leftHand && weapons.slots.leftHand.def.kind === 'shield'),
-    thrust: P.thrust, time,
+    thrust: (window.__mech && window.__mech.forceThrust) || P.thrust, time,
   });
   if (res.step >= 0) {
     mech.footWorld(res.step, _t);
